@@ -54,6 +54,7 @@ interface FarmContextType {
   toggleAdminMode: () => void;
   quickAddFunds: (amount: number) => Promise<void>;
   triggerMaturityCheck: () => Promise<void>;
+  adjustUserWallet: (userId: string, fields: Partial<UserProfile>) => Promise<void>;
 }
 
 const FarmContext = createContext<FarmContextType | undefined>(undefined);
@@ -557,12 +558,13 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Setup polling or subscription for real-time state consistency
     const interval = setInterval(() => {
       fetchAllData(currentUser);
-    }, 12000);
+    }, 4000);
 
     // Check if we are running through the local API proxy or in a secure iframe environment.
     // If so, skip WebSocket subscriptions to avoid connection loop error messages.
+    // Otherwise, allow direct Appwrite cloud Realtime (WebSockets) for blazing fast instant synchronization!
     const isUsingProxy = typeof window !== "undefined" && 
-      (window.location.host.includes("run.app") || window.location.pathname.includes("/api/appwrite") || true);
+      (window.location.host.includes("run.app") || window.location.host.includes("localhost") || window.location.pathname.includes("/api/appwrite"));
 
     let unsubscribe = () => {};
     if (!isUsingProxy) {
@@ -1039,6 +1041,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser.id,
         {
           balance: updatedUserBalance,
+          walletBalance: updatedUserBalance,
           totalInvested: updatedUserInvested
         }
       );
@@ -1102,7 +1105,8 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   rDoc.id,
                   {
                     referralBonus: Number((rDoc.referralBonus + commission).toFixed(2)),
-                    balance: Number((rDoc.balance + commission).toFixed(2))
+                    balance: Number((rDoc.balance + commission).toFixed(2)),
+                    walletBalance: Number((rDoc.balance + commission).toFixed(2))
                   }
                 );
 
@@ -1276,7 +1280,10 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         APPWRITE_CONFIG.databaseId,
         APPWRITE_CONFIG.collections.users,
         target.userId,
-        { balance: newBalance }
+        {
+          balance: newBalance,
+          walletBalance: newBalance
+        }
       );
 
       const notifId = "not_" + Date.now();
@@ -1431,7 +1438,8 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         APPWRITE_CONFIG.collections.users,
         target.userId,
         {
-          balance: updatedBalance
+          balance: updatedBalance,
+          walletBalance: updatedBalance
         }
       );
 
@@ -1697,6 +1705,67 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const adjustUserWallet = async (userId: string, fields: Partial<UserProfile>) => {
+    if (isMockAppwrite) {
+      const updated = users.map(u => u.id === userId ? { ...u, ...fields } : u);
+      setUsers(updated);
+      syncLocal("fr_users", updated);
+      if (currentUser?.id === userId) {
+        const updatedCurrentUser = { ...currentUser, ...fields };
+        setCurrentUser(updatedCurrentUser);
+        syncLocal("fr_current_user", updatedCurrentUser);
+      }
+      return;
+    }
+    try {
+      const payload: any = {};
+      if (fields.balance !== undefined) {
+        payload.balance = fields.balance;
+        payload.walletBalance = fields.balance;
+      }
+      if (fields.totalInvested !== undefined) {
+        payload.totalInvested = fields.totalInvested;
+      }
+      if (fields.totalEarnings !== undefined) {
+        payload.totalEarnings = fields.totalEarnings;
+        payload.totalProfit = fields.totalEarnings;
+      }
+      if (fields.referralBonus !== undefined) {
+        payload.referralBonus = fields.referralBonus;
+      }
+      if (fields.name !== undefined) {
+        payload.fullname = fields.name;
+        payload.name = fields.name;
+      }
+      if (fields.phoneNumber !== undefined) {
+        payload.phoneNumber = fields.phoneNumber;
+        payload.phone = fields.phoneNumber;
+      }
+      if (fields.isBanned !== undefined) {
+        payload.isBanned = fields.isBanned;
+      }
+
+      await databases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.users,
+        userId,
+        payload
+      );
+      
+      const updatedUsers = users.map(u => u.id === userId ? { ...u, ...fields } : u);
+      setUsers(updatedUsers);
+      
+      if (currentUser?.id === userId) {
+        const updatedCurrentUser = { ...currentUser, ...fields };
+        setCurrentUser(updatedCurrentUser);
+        syncLocal("fr_current_user", updatedCurrentUser);
+      }
+    } catch (err) {
+      handleAppwriteError(err, OperationType.UPDATE, `users/${userId}`);
+      throw err;
+    }
+  };
+
   const sendBroadcastNotification = async (title: string, message: string, targetUserId: string) => {
     const newNotif: Notification = {
       id: "not_" + Date.now(),
@@ -1750,7 +1819,8 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
           APPWRITE_CONFIG.collections.users,
           currentUser.id,
           {
-            balance: Number((currentUser.balance + amount).toFixed(2))
+            balance: Number((currentUser.balance + amount).toFixed(2)),
+            walletBalance: Number((currentUser.balance + amount).toFixed(2))
           }
         );
       } catch (err) {
@@ -1826,8 +1896,10 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser.id,
         {
           balance: newUserVal.balance,
+          walletBalance: newUserVal.balance,
           totalInvested: newUserVal.totalInvested,
-          totalEarnings: newUserVal.totalEarnings
+          totalEarnings: newUserVal.totalEarnings,
+          totalProfit: newUserVal.totalEarnings
         }
       );
 
@@ -1972,7 +2044,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loginWithEmail, registerWithEmail, logout, navigate, forgotPassword,
       createDeposit, createInvestment, withdrawMaturedInvestment, createWithdrawal, markNotificationRead,
       approveDeposit, rejectDeposit, approveWithdrawal, rejectWithdrawal,
-      createOrUpdatePlan, deletePlan, createFarmUpdate, editFarmUpdate, deleteFarmUpdate, banUser, sendBroadcastNotification,
+      createOrUpdatePlan, deletePlan, createFarmUpdate, editFarmUpdate, deleteFarmUpdate, banUser, adjustUserWallet, sendBroadcastNotification,
       toggleAdminMode, quickAddFunds, triggerMaturityCheck, children
     }} />
   );

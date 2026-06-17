@@ -241,6 +241,17 @@ export function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // Scan and automatically prefill referral links (e.g., /register?ref=RISE1234)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get("ref") || params.get("referredCode") || params.get("code");
+      if (ref) {
+        setReferredBy(ref.trim().toUpperCase());
+      }
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email || !phoneNumber || !password || !confirmPassword) {

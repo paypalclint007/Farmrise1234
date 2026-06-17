@@ -283,9 +283,17 @@ function AdminDashboardView() {
 
 // 2. Users Management Board (With Search & Ban/Unban)
 function UsersManagementView() {
-  const { users, banUser, navigate } = useFarm();
+  const { users, banUser, adjustUserWallet, navigate } = useFarm();
   const [searchQuery, setSearchQuery] = useState("");
   const [blockingId, setBlockingId] = useState<string | null>(null);
+
+  // Editing state
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editBalance, setEditBalance] = useState("");
+  const [editInvested, setEditInvested] = useState("");
+  const [editEarnings, setEditEarnings] = useState("");
+  const [editReferralBonus, setEditReferralBonus] = useState("");
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
 
   // Search filter implementation
   const filteredUsers = users.filter((u) => {
@@ -311,6 +319,36 @@ function UsersManagementView() {
       alert(`Fatal Error performing action: ${err.message || String(err)}`);
     } finally {
       setBlockingId(null);
+    }
+  };
+
+  const handleStartEdit = (u: UserProfile) => {
+    setEditingUserId(u.id);
+    setEditBalance(String(u.balance || 0));
+    setEditInvested(String(u.totalInvested || 0));
+    setEditEarnings(String(u.totalEarnings || 0));
+    setEditReferralBonus(String(u.referralBonus || 0));
+  };
+
+  const handleCancelEdit = () => {
+    setEditingUserId(null);
+  };
+
+  const handleSaveMetrics = async (userId: string) => {
+    setSavingUserId(userId);
+    try {
+      await adjustUserWallet(userId, {
+        balance: Number(editBalance) || 0,
+        totalInvested: Number(editInvested) || 0,
+        totalEarnings: Number(editEarnings) || 0,
+        referralBonus: Number(editReferralBonus) || 0,
+      });
+      alert("Sponsor metrics have been securely saved and synchronized!");
+      setEditingUserId(null);
+    } catch (err: any) {
+      alert(`Error updating sponsor metrics: ${err.message || String(err)}`);
+    } finally {
+      setSavingUserId(null);
     }
   };
 
@@ -346,91 +384,186 @@ function UsersManagementView() {
             <p className="text-[10px] text-slate-500 mt-1">Refine your search parameters at the search input bar</p>
           </div>
         ) : (
-          filteredUsers.map((u) => (
-            <div 
-              key={u.id} 
-              className={`glass-panel p-5 rounded-2xl space-y-4 relative overflow-hidden transition-all border ${
-                u.isBanned 
-                  ? "border-red-500/30 bg-red-950/5/10" 
-                  : "hover:border-white/15"
-              }`}
-            >
-              {u.isBanned && (
-                <div className="absolute top-0 right-0 bg-red-650/90 text-white text-[9px] font-mono tracking-widest font-black uppercase px-3.5 py-1 rounded-bl-xl border-l border-b border-red-500/20">
-                  Suspended Banned
-                </div>
-              )}
-
-              <div className="flex justify-between items-start pr-16">
-                <div>
-                  <h4 className="text-xs font-black text-white hover:text-gold-accent block leading-none">{u.name}</h4>
-                  <span className="text-[10px] text-slate-400 font-mono block mt-1.5">{u.email}</span>
-                  {u.phoneNumber && (
-                    <span className="text-[9.5px] text-slate-500 font-mono block mt-0.5">Phone: {u.phoneNumber}</span>
-                  )}
-                </div>
-                
-                <div className="shrink-0">
-                  {u.isAdmin ? (
-                    <span className="text-[9px] bg-red-950/80 font-mono text-red-400 px-2 py-1 border border-red-500/20 rounded-lg font-bold uppercase">
-                      HQ ADMIN
-                    </span>
-                  ) : (
-                    <span className="text-[9px] bg-sky-950/80 font-mono text-sky-450 px-2 py-1 border border-sky-500/20 rounded-lg font-bold uppercase">
-                      SPONSOR
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Financial balances */}
-              <div className="grid grid-cols-3 gap-2 text-[9.5px] uppercase font-mono bg-slate-950/65 p-3 rounded-xl border border-white/5 text-center">
-                <div>
-                  <span className="text-slate-500 block text-[8px] font-bold">Live Funds:</span>
-                  <span className="text-white font-bold block mt-0.5">₦{u.balance?.toLocaleString(undefined, {minimumFractionDigits:0})}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[8px] font-bold">Locked Capital:</span>
-                  <span className="text-gold-accent font-bold block mt-0.5">₦{u.totalInvested?.toLocaleString(undefined, {minimumFractionDigits:0})}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[8px] font-bold">Total Earnings:</span>
-                  <span className="text-green-accent font-bold block mt-0.5">₦{u.totalEarnings?.toLocaleString(undefined, {minimumFractionDigits:0})}</span>
-                </div>
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex items-center gap-3 pt-1">
-                {!u.isAdmin && (
-                  <button
-                    disabled={blockingId === u.id}
-                    onClick={() => handleToggleBanned(u)}
-                    className={`flex-1 py-2 rounded-xl text-[10px] font-mono font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
-                      u.isBanned
-                        ? "bg-emerald-500 text-slate-950 font-black"
-                        : "bg-red-950/40 text-red-400 border border-red-500/20 hover:bg-red-900 hover:text-white"
-                    }`}
-                  >
-                    {blockingId === u.id ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : u.isBanned ? (
-                      <>
-                        <UserCheck className="w-3.5 h-3.5" /> Reinstate Partner
-                      </>
-                    ) : (
-                      <>
-                        <Ban className="w-3.5 h-3.5" /> Suspend BAN Account
-                      </>
-                    )}
-                  </button>
+          filteredUsers.map((u) => {
+            const isEditing = editingUserId === u.id;
+            return (
+              <div 
+                key={u.id} 
+                className={`glass-panel p-5 rounded-2xl space-y-4 relative overflow-hidden transition-all border ${
+                  u.isBanned 
+                    ? "border-red-500/30 bg-red-950/5/10" 
+                    : isEditing
+                    ? "border-gold-accent bg-gold-accent/5"
+                    : "hover:border-white/15"
+                }`}
+              >
+                {u.isBanned && (
+                  <div className="absolute top-0 right-0 bg-red-650/90 text-white text-[9px] font-mono tracking-widest font-black uppercase px-3.5 py-1 rounded-bl-xl border-l border-b border-red-500/20">
+                    Suspended Banned
+                  </div>
                 )}
 
-                <span className="text-[9px] font-mono text-slate-550 shrink-0 select-all">
-                  UID: {u.id}
-                </span>
+                <div className="flex justify-between items-start pr-16 max-w-full">
+                  <div className="overflow-hidden">
+                    <h4 className="text-xs font-black text-white hover:text-gold-accent block leading-none truncate max-w-[200px]">{u.name}</h4>
+                    <span className="text-[10px] text-slate-400 font-mono block mt-1.5 truncate max-w-[200px]">{u.email}</span>
+                    {u.phoneNumber && (
+                      <span className="text-[9.5px] text-slate-500 font-mono block mt-0.5">Phone: {u.phoneNumber}</span>
+                    )}
+                    {u.referredBy && (
+                      <span className="text-[9px] bg-emerald-500/10 text-emerald-400 font-mono px-1.5 py-0.5 rounded inline-block mt-2">
+                        Referred By: {u.referredBy}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="shrink-0 flex flex-col items-end gap-2">
+                    {u.isAdmin ? (
+                      <span className="text-[9px] bg-red-950/80 font-mono text-red-400 px-2 py-1 border border-red-500/20 rounded-lg font-bold uppercase block text-center">
+                        HQ ADMIN
+                      </span>
+                    ) : (
+                      <span className="text-[9px] bg-sky-950/80 font-mono text-sky-450 px-2 py-1 border border-sky-500/20 rounded-lg font-bold uppercase block text-center">
+                        SPONSOR
+                      </span>
+                    )}
+                    
+                    {!isEditing && (
+                      <button 
+                        onClick={() => handleStartEdit(u)}
+                        className="text-[10px] font-mono font-bold uppercase tracking-wider text-gold-accent hover:underline flex items-center gap-1 bg-white/5 py-1 px-2.5 rounded border border-white/5 mt-1 animate-pulse"
+                      >
+                        <Edit className="w-3 h-3" /> Edit Metrics
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {!isEditing ? (
+                  /* Financial balances static display */
+                  <div className="grid grid-cols-4 gap-1 text-[9px] uppercase font-mono bg-slate-950/65 p-2 rounded-xl border border-white/5 text-center">
+                    <div>
+                      <span className="text-slate-500 block text-[7.5px] font-bold">Live Funds:</span>
+                      <span className="text-white font-bold block mt-0.5">₦{(u.balance || 0).toLocaleString(undefined, {minimumFractionDigits:0})}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[7.5px] font-bold">Invested:</span>
+                      <span className="text-gold-accent font-bold block mt-0.5">₦{(u.totalInvested || 0).toLocaleString(undefined, {minimumFractionDigits:0})}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[7.5px] font-bold">Earnings:</span>
+                      <span className="text-green-accent font-bold block mt-0.5">₦{(u.totalEarnings || 0).toLocaleString(undefined, {minimumFractionDigits:0})}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[7.5px] font-bold">Ref Bonus:</span>
+                      <span className="text-[#F5B300] font-bold block mt-0.5">₦{(u.referralBonus || 0).toLocaleString(undefined, {minimumFractionDigits:0})}</span>
+                    </div>
+                  </div>
+                ) : (
+                  /* Financial metrics dynamic inputs form */
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="p-3 bg-slate-950 rounded-xl border border-gold-accent/25 space-y-3"
+                  >
+                    <div className="text-[10px] uppercase font-mono text-gold-accent font-bold flex items-center gap-1 border-b border-white/5 pb-1">
+                      <Settings className="w-3.5 h-3.5 animate-spin-slow" /> Sponsor Account Ledger adjustments
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div>
+                        <label className="block text-[8.5px] font-mono text-slate-400 mb-1">LIVE FUNDS (₦)</label>
+                        <input 
+                          type="number"
+                          value={editBalance}
+                          onChange={(e) => setEditBalance(e.target.value)}
+                          className="w-full bg-slate-900 border border-white/10 rounded-lg p-2 text-white font-mono font-bold focus:outline-none focus:border-gold-accent text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8.5px] font-mono text-slate-400 mb-1">LOCKED CAPITAL (₦)</label>
+                        <input 
+                          type="number"
+                          value={editInvested}
+                          onChange={(e) => setEditInvested(e.target.value)}
+                          className="w-full bg-slate-900 border border-white/10 rounded-lg p-2 text-white font-mono font-bold focus:outline-none focus:border-gold-accent text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8.5px] font-mono text-slate-400 mb-1">TOTAL EARNINGS (₦)</label>
+                        <input 
+                          type="number"
+                          value={editEarnings}
+                          onChange={(e) => setEditEarnings(e.target.value)}
+                          className="w-full bg-slate-900 border border-white/10 rounded-lg p-2 text-white font-mono font-bold focus:outline-none focus:border-gold-accent text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8.5px] font-mono text-slate-400 mb-1">REFERRAL BONUS (₦)</label>
+                        <input 
+                          type="number"
+                          value={editReferralBonus}
+                          onChange={(e) => setEditReferralBonus(e.target.value)}
+                          className="w-full bg-slate-900 border border-white/10 rounded-lg p-2 text-white font-mono font-bold focus:outline-none focus:border-gold-accent text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button 
+                        disabled={savingUserId === u.id}
+                        onClick={() => handleSaveMetrics(u.id)}
+                        className="flex-1 py-1.5 rounded-lg bg-gold-accent text-slate-950 text-[10px] font-mono font-black uppercase tracking-wider flex items-center justify-center gap-1 hover:brightness-110"
+                      >
+                        {savingUserId === u.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5" /> Save Changes
+                          </>
+                        )}
+                      </button>
+                      <button 
+                        onClick={handleCancelEdit}
+                        className="py-1.5 px-3 rounded-lg border border-white/10 text-slate-400 hover:text-white text-[10px] font-mono font-bold uppercase"
+                      >
+                        <X className="w-3.5 h-3.5" /> Cancel
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-3 pt-1">
+                  {!u.isAdmin && (
+                    <button
+                      disabled={blockingId === u.id}
+                      onClick={() => handleToggleBanned(u)}
+                      className={`flex-1 py-2 rounded-xl text-[10px] font-mono font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                        u.isBanned
+                          ? "bg-emerald-500 text-slate-950 font-black"
+                          : "bg-red-950/40 text-red-400 border border-red-500/20 hover:bg-red-900 hover:text-white"
+                      }`}
+                    >
+                      {blockingId === u.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : u.isBanned ? (
+                        <>
+                          <UserCheck className="w-3.5 h-3.5" /> Reinstate Partner
+                        </>
+                      ) : (
+                        <>
+                          <Ban className="w-3.5 h-3.5" /> Suspend BAN Account
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  <span className="text-[9px] font-mono text-slate-550 shrink-0 select-all">
+                    UID: {u.id}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
