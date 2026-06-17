@@ -1,0 +1,1444 @@
+import React, { useState } from "react";
+import { useFarm } from "../context/FarmContext";
+import { 
+  Users, DollarSign, FileText, Check, X, ShieldAlert, Award,
+  ArrowLeft, Bell, Landmark, Settings, Plus, Star, Layers, Percent,
+  Ban, UserCheck, Search, Image as ImageIcon, Video, Trash2, Edit,
+  TrendingUp, Coins, AlertTriangle, Play, HelpCircle, Sparkles, Loader2,
+  Calendar, Clock, CheckCircle
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { InvestmentPlan, UserProfile, FarmUpdate } from "../types";
+
+// Curated Real High-Quality Farm Photos (Unsplash)
+const PHOTO_PRESETS = [
+  {
+    name: "Coop Broiler Feeding",
+    category: "Chicken",
+    url: "https://images.unsplash.com/photo-1516253593875-bd7ba052fbc5?w=800&auto=format&fit=crop&q=80",
+  },
+  {
+    name: "Free Range Hens",
+    category: "Chicken",
+    url: "https://images.unsplash.com/photo-1548550123-94f1067bc16f?w=800&auto=format&fit=crop&q=80",
+  },
+  {
+    name: "Egg Sorting Harvest",
+    category: "Chicken",
+    url: "https://images.unsplash.com/photo-1598965402089-897db520192b?w=800&auto=format&fit=crop&q=80",
+  },
+  {
+    name: "Smart Bio-Secure Barn",
+    category: "General",
+    url: "https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=800&auto=format&fit=crop&q=80",
+  },
+  {
+    name: "Berkshire Hogs Herd",
+    category: "Pig",
+    url: "https://images.unsplash.com/photo-1516467508483-a7212febe31a?w=800&auto=format&fit=crop&q=80",
+  },
+  {
+    name: "Straw Bedded Piglets",
+    category: "Pig",
+    url: "https://images.unsplash.com/photo-1516802273409-68526ee1bdd6?w=800&auto=format&fit=crop&q=80",
+  },
+];
+
+// Curated Real Free Stock Farm Videos (Mixkit direct MP4 loops)
+const VIDEO_PRESETS = [
+  {
+    name: "Chickens Feeding Session",
+    url: "https://assets.mixkit.co/videos/preview/mixkit-poultry-farm-chickens-caged-and-eating-40097-large.mp4",
+  },
+  {
+    name: "Egg Collecting Harvest",
+    url: "https://assets.mixkit.co/videos/preview/mixkit-man-harvesting-eggs-from-a-chicken-coop-40096-large.mp4",
+  },
+  {
+    name: "Piglets Resting Bed",
+    url: "https://assets.mixkit.co/videos/preview/mixkit-little-piglet-sleeping-on-the-hay-40098-large.mp4",
+  },
+  {
+    name: "Open Field Chicken Run",
+    url: "https://assets.mixkit.co/videos/preview/mixkit-flock-of-hens-running-around-the-courtyard-40095-large.mp4",
+  },
+];
+
+export default function AdminPages() {
+  const { currentPage, navigate } = useFarm();
+
+  switch (currentPage) {
+    case "admin-dashboard":
+      return <AdminDashboardView />;
+    case "admin-users":
+      return <UsersManagementView />;
+    case "admin-deposits":
+      return <DepositApprovalView />;
+    case "admin-withdrawals":
+      return <WithdrawalApprovalView />;
+    case "admin-plans":
+      return <PlansManagementView />;
+    case "admin-updates":
+      return <FarmUpdatesManagementView />;
+    case "admin-notifications":
+      return <NotificationsManagementView />;
+    default:
+      return <AdminDashboardView />;
+  }
+}
+
+// 1. Admin Dashboard Overview
+function AdminDashboardView() {
+  const { users, deposits, withdrawals, plans, investments, navigate } = useFarm();
+
+  const pendingDeps = deposits.filter(d => d.status === "pending");
+  const pendingWths = withdrawals.filter(w => w.status === "pending");
+
+  // Statistical calculations
+  const totalApprovedDeposits = deposits.filter(d => d.status === "approved").reduce((sum, d) => sum + d.amount, 0);
+  const totalApprovedWithdrawals = withdrawals.filter(w => w.status === "approved").reduce((sum, w) => sum + w.amount, 0);
+  const totalActiveInvestmentsSum = investments.filter(i => i.status === "active").reduce((sum, i) => sum + i.amount, 0);
+  
+  // Total Revenue as platform deposit flow or Net liquidity growth
+  const totalRevenueVal = totalApprovedDeposits; 
+  const netSurplusVal = totalApprovedDeposits - totalApprovedWithdrawals;
+
+  return (
+    <div className="space-y-6 pb-24 font-sans text-left">
+      <div className="flex justify-between items-start pt-2">
+        <div>
+          <h2 className="text-2xl font-black font-display text-white flex items-center gap-2">
+            <ShieldAlert className="text-gold-accent w-6 h-6" /> FarmRise HQ Control
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">Admin administrative operations & logs</p>
+        </div>
+        <button 
+          onClick={() => navigate("dashboard")}
+          className="text-xs font-bold font-mono px-3 py-1.5 rounded-lg border border-white/20 text-white hover:bg-slate-900 transition-all flex items-center gap-1"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Back Live Client
+        </button>
+      </div>
+
+      {/* Grid statistics highlights */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div 
+          onClick={() => navigate("admin-users")}
+          className="glass-panel p-4 rounded-xl cursor-pointer hover:border-white/20 transition-all relative overflow-hidden"
+        >
+          <span className="text-[10px] font-mono text-slate-400 uppercase font-black block tracking-wider mb-2">Total Users</span>
+          <span className="text-xl md:text-2xl font-black font-display text-blue-400 block">{users.length}</span>
+          <span className="text-[9px] text-slate-500 font-mono mt-1 block">Sponsor accounts</span>
+        </div>
+
+        <div 
+          onClick={() => navigate("admin-deposits")}
+          className="glass-panel p-4 rounded-xl cursor-pointer hover:border-white/20 transition-all relative overflow-hidden"
+        >
+          <span className="text-[10px] font-mono text-slate-400 uppercase font-black block tracking-wider mb-2">Total Deposits</span>
+          <span className="text-xl md:text-2xl font-black font-display text-emerald-400 block">₦{totalApprovedDeposits.toLocaleString()}</span>
+          <span className="text-[9px] text-amber-400 font-mono mt-1 block flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse inline-block" />
+            {pendingDeps.length} Pending approvals
+          </span>
+        </div>
+
+        <div 
+          onClick={() => navigate("admin-withdrawals")}
+          className="glass-panel p-4 rounded-xl cursor-pointer hover:border-white/20 transition-all relative overflow-hidden"
+        >
+          <span className="text-[10px] font-mono text-slate-400 uppercase font-black block tracking-wider mb-2">Total Payouts</span>
+          <span className="text-xl md:text-2xl font-black font-display text-rose-400 block">₦{totalApprovedWithdrawals.toLocaleString()}</span>
+          <span className="text-[9px] text-red-400 font-mono mt-1 block flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-450 inline-block" />
+            {pendingWths.length} Pending pay
+          </span>
+        </div>
+
+        <div 
+          onClick={() => navigate("admin-plans")}
+          className="glass-panel p-4 rounded-xl cursor-pointer hover:border-white/20 transition-all relative overflow-hidden"
+        >
+          <span className="text-[10px] font-mono text-slate-400 uppercase font-black block tracking-wider mb-2">Active Portfolios</span>
+          <span className="text-xl md:text-2xl font-black font-display text-gold-accent block">₦{totalActiveInvestmentsSum.toLocaleString()}</span>
+          <span className="text-[9px] text-slate-400 font-mono mt-1 block">Live sponsored crops</span>
+        </div>
+
+        <div 
+          className="glass-panel p-4 rounded-xl border border-gold-accent/25 relative overflow-hidden bg-slate-900/10 col-span-2 md:col-span-1"
+        >
+          <span className="text-[10px] font-mono text-slate-400 uppercase font-black block tracking-wider mb-2">Total Revenue</span>
+          <span className="text-xl md:text-2xl font-black font-display text-amber-300 block">₦{totalRevenueVal.toLocaleString()}</span>
+          <span className="text-[9.5px] text-slate-400 font-mono mt-1 block font-semibold">
+            Net: ₦{netSurplusVal.toLocaleString()}
+          </span>
+        </div>
+      </div>
+
+      {/* Quick Administrative shortcuts */}
+      <div className="space-y-3 pt-2">
+        <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold">HQ Operations Dashboard</h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div 
+            onClick={() => navigate("admin-users")}
+            className="glass-panel p-4.5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-white/15 bg-slate-950/20"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-400">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white">Sponsors & Partners ({users.length})</h4>
+                <p className="text-[10px] text-slate-400 mt-0.5">Search sponsors, view active portfolios & suspension ban controls</p>
+              </div>
+            </div>
+            <span className="text-xs font-mono font-bold text-slate-500 hover:text-white">Directory →</span>
+          </div>
+
+          <div 
+            onClick={() => navigate("admin-deposits")}
+            className="glass-panel p-4.5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-white/15 bg-slate-950/20"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-400">
+                <Landmark className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white">Deposit Pipeline ({pendingDeps.length} Pending)</h4>
+                <p className="text-[10px] text-slate-400 mt-0.5">Authorize incoming wire proofs and wallets credit increments</p>
+              </div>
+            </div>
+            <span className="text-xs font-mono font-bold text-slate-500 hover:text-white">Pipeline →</span>
+          </div>
+
+          <div 
+            onClick={() => navigate("admin-withdrawals")}
+            className="glass-panel p-4.5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-white/15 bg-slate-950/20"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-rose-500/10 rounded-xl flex items-center justify-center text-rose-400">
+                <DollarSign className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white">Withdrawal Clearances ({pendingWths.length} Pending)</h4>
+                <p className="text-[10px] text-slate-400 mt-0.5">Review, execute or reject user wallet withdrawal payout redemptions</p>
+              </div>
+            </div>
+            <span className="text-xs font-mono font-bold text-slate-500 hover:text-white">Clearances →</span>
+          </div>
+
+          <div 
+            onClick={() => navigate("admin-plans")}
+            className="glass-panel p-4.5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-white/15 bg-slate-950/20"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-green-accent/10 rounded-xl flex items-center justify-center text-green-accent">
+                <Plus className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white">Livestock Blueprints Manager</h4>
+                <p className="text-[10px] text-slate-400 mt-0.5">Construct chicken or pig plans, edit limits and enable/disable plans</p>
+              </div>
+            </div>
+            <span className="text-xs font-mono font-bold text-slate-500 hover:text-white">Blueprints →</span>
+          </div>
+
+          <div 
+            onClick={() => navigate("admin-updates")}
+            className="glass-panel p-4.5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-white/15 bg-slate-950/20"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center text-gold-accent">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white">Live Farm Updates Desk</h4>
+                <p className="text-[10px] text-slate-400 mt-0.5">Publish crop video audits, upload images and edit operational logs</p>
+              </div>
+            </div>
+            <span className="text-xs font-mono font-bold text-slate-500 hover:text-white">Logs Desk →</span>
+          </div>
+
+          <div 
+            onClick={() => navigate("admin-notifications")}
+            className="glass-panel p-4.5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-white/15 bg-slate-950/20"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-400">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-white">Global Bulletins & Investment Updates</h4>
+                <p className="text-[10px] text-slate-400 mt-0.5">Push direct live announcements or active portfolio alerts</p>
+              </div>
+            </div>
+            <span className="text-xs font-mono font-bold text-slate-500 hover:text-white">Dispatch →</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 2. Users Management Board (With Search & Ban/Unban)
+function UsersManagementView() {
+  const { users, banUser, navigate } = useFarm();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [blockingId, setBlockingId] = useState<string | null>(null);
+
+  // Search filter implementation
+  const filteredUsers = users.filter((u) => {
+    const nameMatch = u.name?.toLowerCase().includes(searchQuery.toLowerCase());
+    const emailMatch = u.email?.toLowerCase().includes(searchQuery.toLowerCase());
+    const phoneMatch = u.phoneNumber?.includes(searchQuery);
+    return nameMatch || emailMatch || phoneMatch;
+  });
+
+  const handleToggleBanned = async (u: UserProfile) => {
+    const isCurrentlyBanned = !!u.isBanned;
+    const confirmMsg = isCurrentlyBanned 
+      ? `Are you surely willing to reinstate ${u.name}'s FarmRise access status?`
+      : `Are you surely willing to suspend/BAN ${u.name}? They will be instantly booted and locked out of operations.`;
+    
+    if (!confirm(confirmMsg)) return;
+    
+    setBlockingId(u.id);
+    try {
+      await banUser(u.id, !isCurrentlyBanned);
+      alert(`User account successfully ${!isCurrentlyBanned ? "SUSPENDED" : "REINSTATED"}`);
+    } catch (err: any) {
+      alert(`Fatal Error performing action: ${err.message || String(err)}`);
+    } finally {
+      setBlockingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6 pb-24 text-left">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pt-2">
+        <div>
+          <button onClick={() => navigate("admin-dashboard")} className="text-xs text-gold-accent font-semibold hover:underline flex items-center gap-1">
+            <ArrowLeft className="w-3 h-3" /> Back Control Center
+          </button>
+          <h2 className="text-2xl font-black font-display text-white mt-1">Partners Directory</h2>
+          <p className="text-xs text-slate-400">Search sponsors, update profile metrics & ban users instantly</p>
+        </div>
+
+        {/* Search bar */}
+        <div className="relative max-w-sm w-full shrink-0">
+          <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search name, phone or email..."
+            className="w-full bg-slate-950/80 border border-white/5 rounded-xl pl-10 pr-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-gold-accent transition-all"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {filteredUsers.length === 0 ? (
+          <div className="col-span-full border border-dashed border-white/10 rounded-2xl p-12 text-center bg-slate-900/10">
+            <Users className="w-8 h-8 text-slate-500 mx-auto mb-3" />
+            <p className="text-xs text-slate-400 uppercase tracking-wider font-bold">No Partners Match Selection</p>
+            <p className="text-[10px] text-slate-500 mt-1">Refine your search parameters at the search input bar</p>
+          </div>
+        ) : (
+          filteredUsers.map((u) => (
+            <div 
+              key={u.id} 
+              className={`glass-panel p-5 rounded-2xl space-y-4 relative overflow-hidden transition-all border ${
+                u.isBanned 
+                  ? "border-red-500/30 bg-red-950/5/10" 
+                  : "hover:border-white/15"
+              }`}
+            >
+              {u.isBanned && (
+                <div className="absolute top-0 right-0 bg-red-650/90 text-white text-[9px] font-mono tracking-widest font-black uppercase px-3.5 py-1 rounded-bl-xl border-l border-b border-red-500/20">
+                  Suspended Banned
+                </div>
+              )}
+
+              <div className="flex justify-between items-start pr-16">
+                <div>
+                  <h4 className="text-xs font-black text-white hover:text-gold-accent block leading-none">{u.name}</h4>
+                  <span className="text-[10px] text-slate-400 font-mono block mt-1.5">{u.email}</span>
+                  {u.phoneNumber && (
+                    <span className="text-[9.5px] text-slate-500 font-mono block mt-0.5">Phone: {u.phoneNumber}</span>
+                  )}
+                </div>
+                
+                <div className="shrink-0">
+                  {u.isAdmin ? (
+                    <span className="text-[9px] bg-red-950/80 font-mono text-red-400 px-2 py-1 border border-red-500/20 rounded-lg font-bold uppercase">
+                      HQ ADMIN
+                    </span>
+                  ) : (
+                    <span className="text-[9px] bg-sky-950/80 font-mono text-sky-450 px-2 py-1 border border-sky-500/20 rounded-lg font-bold uppercase">
+                      SPONSOR
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Financial balances */}
+              <div className="grid grid-cols-3 gap-2 text-[9.5px] uppercase font-mono bg-slate-950/65 p-3 rounded-xl border border-white/5 text-center">
+                <div>
+                  <span className="text-slate-500 block text-[8px] font-bold">Live Funds:</span>
+                  <span className="text-white font-bold block mt-0.5">₦{u.balance?.toLocaleString(undefined, {minimumFractionDigits:0})}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[8px] font-bold">Locked Capital:</span>
+                  <span className="text-gold-accent font-bold block mt-0.5">₦{u.totalInvested?.toLocaleString(undefined, {minimumFractionDigits:0})}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[8px] font-bold">Total Earnings:</span>
+                  <span className="text-green-accent font-bold block mt-0.5">₦{u.totalEarnings?.toLocaleString(undefined, {minimumFractionDigits:0})}</span>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-3 pt-1">
+                {!u.isAdmin && (
+                  <button
+                    disabled={blockingId === u.id}
+                    onClick={() => handleToggleBanned(u)}
+                    className={`flex-1 py-2 rounded-xl text-[10px] font-mono font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+                      u.isBanned
+                        ? "bg-emerald-500 text-slate-950 font-black"
+                        : "bg-red-950/40 text-red-400 border border-red-500/20 hover:bg-red-900 hover:text-white"
+                    }`}
+                  >
+                    {blockingId === u.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : u.isBanned ? (
+                      <>
+                        <UserCheck className="w-3.5 h-3.5" /> Reinstate Partner
+                      </>
+                    ) : (
+                      <>
+                        <Ban className="w-3.5 h-3.5" /> Suspend BAN Account
+                      </>
+                    )}
+                  </button>
+                )}
+
+                <span className="text-[9px] font-mono text-slate-550 shrink-0 select-all">
+                  UID: {u.id}
+                </span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 3. Deposit Approval Pipeline with Status Filter Toggles (Approve / Reject)
+function DepositApprovalView() {
+  const { deposits, approveDeposit, rejectDeposit, navigate } = useFarm();
+  const [activeTab, setActiveTab] = useState<"pending" | "approved" | "rejected">("pending");
+
+  const filteredDeposits = deposits.filter((d) => d.status === activeTab);
+
+  return (
+    <div className="space-y-6 pb-24 text-left">
+      <div>
+        <button onClick={() => navigate("admin-dashboard")} className="text-xs text-gold-accent font-semibold hover:underline flex items-center gap-1">
+          ← Back Control Center
+        </button>
+        <h2 className="text-2xl font-black font-display text-white mt-1">Deposit Pipeline</h2>
+        <p className="text-xs text-slate-400">Approve wire proofs, credit sponsor wallets or reject invalid transactions</p>
+      </div>
+
+      {/* Pipeline tabs filters */}
+      <div className="flex border-b border-white/10 p-1 bg-slate-950/60 rounded-xl space-x-1">
+        {(["pending", "approved", "rejected"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
+              activeTab === tab 
+                ? tab === "pending"
+                  ? "bg-amber-500 text-slate-950"
+                  : tab === "approved"
+                  ? "bg-emerald-500 text-slate-950"
+                  : "bg-red-500 text-white"
+                : "text-slate-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            {tab === "pending" && `⏳ Pending Queue`}
+            {tab === "approved" && `✅ Approved Ledger`}
+            {tab === "rejected" && `❌ Rejected Tickets`}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-4">
+        {filteredDeposits.length === 0 ? (
+          <div className="border border-dashed border-white/10 rounded-2xl p-12 text-center bg-slate-900/10">
+            <Check className="w-8 h-8 text-slate-500 mx-auto mb-3" />
+            <p className="text-xs text-slate-400 uppercase tracking-wider">Empty {activeTab} deposits list</p>
+            <p className="text-[10px] text-slate-500 mt-1">No sponsors currently trigger this status classification</p>
+          </div>
+        ) : (
+          filteredDeposits.map((dep) => (
+            <div key={dep.id} className="glass-panel p-5 rounded-2xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-300 font-mono">ID: {dep.id}</span>
+                    <span className={`text-[9px] font-mono tracking-widest font-bold uppercase rounded px-2 py-0.5 ${
+                      dep.status === "pending"
+                        ? "bg-amber-950 text-amber-400 border border-amber-500/20"
+                        : dep.status === "approved"
+                        ? "bg-emerald-950 text-emerald-400 border border-emerald-500/20"
+                        : "bg-rose-950 text-rose-400 border border-rose-500/20"
+                    }`}>
+                      {dep.status}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-450 block mt-2">Timestamp: {new Date(dep.createdAt).toLocaleString()}</span>
+                  <span className="text-[10px] text-sky-400 font-mono block mt-0.5">Sponsor: {dep.userId}</span>
+                </div>
+                <span className="text-lg font-black text-emerald-400 font-mono">₦{dep.amount.toLocaleString()}</span>
+              </div>
+
+              {/* Receipt metadata details */}
+              <div className="p-3.5 rounded-xl bg-slate-950/60 font-mono text-[11px] border border-white/5 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Deposit Wire Ref:</span>
+                  <span className="text-white font-bold select-all">{dep.txRef}</span>
+                </div>
+              </div>
+
+              {dep.proofImg && (
+                <div className="w-full h-44 rounded-xl overflow-hidden border border-white/5 relative group bg-black">
+                  <img src={dep.proofImg} alt="Proof of wire payment" referrerPolicy="no-referrer" className="w-full h-full object-cover opacity-80" />
+                  <a
+                    href={dep.proofImg}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="absolute bottom-3 right-3 bg-slate-950/80 hover:bg-slate-950 text-white font-mono text-[9px] uppercase tracking-wider px-3 py-1.5 rounded-lg border border-white/10 transition-all z-10"
+                  >
+                    View Original File ↗
+                  </a>
+                </div>
+              )}
+
+              {dep.status === "pending" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => {
+                      if (confirm(`Approve of ₦${dep.amount.toLocaleString()} NGN and credit balance?`)) {
+                        approveDeposit(dep.id);
+                      }
+                    }}
+                    className="py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs uppercase flex items-center justify-center gap-1.5 transition-all"
+                  >
+                    <Check className="w-4 h-4" /> Credit Funds
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm("Deny/Reject this deposit wire proof?")) {
+                        rejectDeposit(dep.id);
+                      }
+                    }}
+                    className="py-2.5 rounded-xl bg-red-950/40 text-red-400 font-bold text-xs uppercase hover:bg-red-950/80 flex items-center justify-center gap-1.5 transition-all border border-red-500/20"
+                  >
+                    <X className="w-4 h-4" /> Decline Proof
+                  </button>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 4. Withdrawal Clearance Pipeline (Approve / Reject)
+function WithdrawalApprovalView() {
+  const { withdrawals, approveWithdrawal, rejectWithdrawal, navigate } = useFarm();
+  const [activeTab, setActiveTab] = useState<"pending" | "approved" | "rejected">("pending");
+
+  const filteredWithdrawals = withdrawals.filter((w) => w.status === activeTab);
+
+  return (
+    <div className="space-y-6 pb-24 text-left">
+      <div>
+        <button onClick={() => navigate("admin-dashboard")} className="text-xs text-gold-accent font-semibold hover:underline flex items-center gap-1">
+          ← Back Control Center
+        </button>
+        <h2 className="text-2xl font-black font-display text-white mt-1">Withdrawal Clearances</h2>
+        <p className="text-xs text-slate-400">Review pending checkout redemption requests, dispatch wire transfers or abort logs</p>
+      </div>
+
+      {/* Tabs list */}
+      <div className="flex border-b border-white/10 p-1 bg-slate-950/60 rounded-xl space-x-1">
+        {(["pending", "approved", "rejected"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
+              activeTab === tab 
+                ? tab === "pending"
+                  ? "bg-amber-500 text-slate-950"
+                  : tab === "approved"
+                  ? "bg-emerald-500 text-slate-950"
+                  : "bg-red-500 text-white"
+                : "text-slate-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            {tab === "pending" && `⏳ Clear Pending`}
+            {tab === "approved" && `✅ Settled Ledger`}
+            {tab === "rejected" && `❌ Bounced Aborted`}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-4">
+        {filteredWithdrawals.length === 0 ? (
+          <div className="border border-dashed border-white/10 rounded-2xl p-12 text-center bg-slate-900/10">
+            <Check className="w-8 h-8 text-slate-500 mx-auto mb-3" />
+            <p className="text-xs text-slate-400 uppercase tracking-wider">Empty {activeTab} withdrawals queue</p>
+            <p className="text-[10px] text-slate-500 mt-1">Everything looks cleared and synced right now</p>
+          </div>
+        ) : (
+          filteredWithdrawals.map((wth) => (
+            <div key={wth.id} className="glass-panel p-5 rounded-2xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-300 font-mono">Payout Ref: {wth.id}</span>
+                    <span className={`text-[9px] font-mono tracking-widest font-bold uppercase rounded px-2 py-0.5 ${
+                      wth.status === "pending"
+                        ? "bg-amber-950 text-amber-400 border border-amber-500/20"
+                        : wth.status === "approved"
+                        ? "bg-emerald-950 text-emerald-400 border border-emerald-500/20"
+                        : "bg-rose-950 text-rose-400 border border-rose-500/20"
+                    }`}>
+                      {wth.status}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 block mt-2">{new Date(wth.createdAt).toLocaleString()}</span>
+                  <span className="text-[10px] text-sky-400 block font-mono mt-0.5">Sponsor: {wth.userId}</span>
+                </div>
+                <span className="text-lg font-black text-rose-400 font-mono">-₦{wth.amount.toLocaleString()}</span>
+              </div>
+
+              <div className="p-3.5 bg-slate-950/60 rounded-xl space-y-2 border border-white/5 font-mono text-[11px]">
+                <div className="text-slate-400 block mb-1 uppercase font-bold text-[9px]">Sponsor Bank Destination:</div>
+                <div className="text-slate-200 leading-relaxed whitespace-pre-wrap select-all">{wth.accountDetails}</div>
+              </div>
+
+              {wth.status === "pending" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => {
+                      if (confirm(`Confirm you dispatched money bank payment to destination: ${wth.accountDetails}?`)) {
+                        approveWithdrawal(wth.id);
+                      }
+                    }}
+                    className="py-2 rounded-xl bg-gold-accent text-slate-900 font-bold text-xs uppercase flex items-center justify-center gap-1 filter hover:brightness-110 transition-all cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" /> Settled wire
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm("Deny, abort and instantly refund balance back to user profile?")) {
+                        rejectWithdrawal(wth.id);
+                      }
+                    }}
+                    className="py-2 rounded-xl bg-red-950/45 text-red-405 font-bold text-xs uppercase hover:bg-red-950 flex items-center justify-center gap-1 transition-all cursor-pointer border border-red-500/10"
+                  >
+                    <X className="w-4 h-4" /> Abort Reject
+                  </button>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 5. Investment Plans Management Board (Add, Edit, Delete, Enable/Disable)
+function PlansManagementView() {
+  const { plans, createOrUpdatePlan, deletePlan, navigate } = useFarm();
+  
+  // Package Builder Form state
+  const [pId, setPId] = useState("");
+  const [pName, setPName] = useState("");
+  const [pType, setPType] = useState<"Chicken" | "Pig">("Chicken");
+  const [pMin, setPMin] = useState("");
+  const [pMax, setPMax] = useState("");
+  const [pYield, setPYield] = useState("");
+  const [pDays, setPDays] = useState("");
+  const [pImg, setPImg] = useState("");
+  const [pDesc, setPDesc] = useState("");
+  const [pStatus, setPStatus] = useState<"active" | "inactive">("active");
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handlePlanSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pName || !pMin || !pMax || !pYield || !pDays || !pImg || !pDesc) {
+      alert("Please fully specify all blueprint fields.");
+      return;
+    }
+    
+    setIsSubmitting(true);
+    const draftId = pId || "plan_" + Date.now();
+    const model: InvestmentPlan = {
+      id: draftId,
+      name: pName,
+      type: pType,
+      minAmount: Number(pMin),
+      maxAmount: Number(pMax),
+      profitPercent: Number(pYield),
+      durationDays: Number(pDays),
+      imageUrl: pImg,
+      description: pDesc,
+      status: pStatus
+    };
+
+    try {
+      await createOrUpdatePlan(model);
+      alert(`Farming Plan blueprint '${pName}' successfully deployed!`);
+      // Reset State
+      setPId(""); 
+      setPName(""); 
+      setPMin(""); 
+      setPMax(""); 
+      setPYield(""); 
+      setPDays(""); 
+      setPImg(""); 
+      setPDesc("");
+      setPStatus("active");
+    } catch (err: any) {
+      alert(`Failed to save package blueprint: ${err.message || String(err)}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSelectToEdit = (plan: InvestmentPlan) => {
+    setPId(plan.id);
+    setPName(plan.name);
+    setPType(plan.type);
+    setPMin(plan.minAmount.toString());
+    setPMax(plan.maxAmount.toString());
+    setPYield(plan.profitPercent.toString());
+    setPDays(plan.durationDays.toString());
+    setPImg(plan.imageUrl);
+    setPDesc(plan.description);
+    setPStatus(plan.status || "active");
+    
+    // Smooth scroll up to form
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleTogglePlanState = async (plan: InvestmentPlan) => {
+    const updatedStatusValue = plan.status === "active" ? "inactive" : "active";
+    if (!confirm(`Are you sure you want to change the status of ${plan.name} to ${updatedStatusValue.toUpperCase()}?`)) return;
+    
+    try {
+      await createOrUpdatePlan({
+        ...plan,
+        status: updatedStatusValue
+      });
+      alert(`Plan updated to: ${updatedStatusValue.toUpperCase()}`);
+    } catch (err: any) {
+      alert(`Error toggling status: ${err.message || String(err)}`);
+    }
+  };
+
+  return (
+    <div className="space-y-6 pb-24 text-left">
+      <div>
+        <button onClick={() => navigate("admin-dashboard")} className="text-xs text-gold-accent font-semibold hover:underline flex items-center gap-1">
+          ← Back Control Center
+        </button>
+        <h2 className="text-2xl font-black font-display text-white mt-1">Farm Blueprints</h2>
+        <p className="text-xs text-slate-400">Deploy, edit, activate/deactivate or delete broiler chicken Yards or pig piggies blueprints</p>
+      </div>
+
+      {/* Package Form */}
+      <form onSubmit={handlePlanSubmit} className="glass-panel p-5 rounded-2xl space-y-4 border border-gold-accent/15 bg-slate-950/20">
+        <div className="flex justify-between items-center border-b border-white/5 pb-3">
+          <h3 className="text-xs font-mono uppercase tracking-wider text-gold-accent font-bold">
+            {pId ? "🛠️ Edit Farming Plan Blueprint" : "➕ Deploy Farming Plan Blueprint"}
+          </h3>
+          {pId && (
+            <button
+              type="button"
+              onClick={() => {
+                setPId(""); setPName(""); setPMin(""); setPMax(""); setPYield(""); setPDays(""); setPImg(""); setPDesc(""); setPStatus("active");
+              }}
+              className="text-[10px] font-mono hover:text-white text-slate-400 uppercase font-bold"
+            >
+              Clear edit mode [X]
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3.5">
+          <div className="col-span-2 sm:col-span-1">
+            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Plan Package Title</label>
+            <input
+              type="text"
+              required
+              value={pName}
+              onChange={(e) => setPName(e.target.value)}
+              placeholder="e.g. Broiler Batch Grow"
+              className="w-full glass-input rounded-xl p-2.5 text-xs text-white"
+            />
+          </div>
+
+          <div className="col-span-2 sm:col-span-1">
+            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Livestock Class</label>
+            <select
+              value={pType}
+              onChange={(e: any) => setPType(e.target.value)}
+              className="w-full bg-slate-950 border border-white/10 rounded-xl p-2.5 text-xs text-white"
+            >
+              <option value="Chicken">🐔 Chicken Broilers Setup</option>
+              <option value="Pig">🐷 Pigs Growth Setup</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Profit Return Yield (%)</label>
+            <input
+              type="number"
+              required
+              value={pYield}
+              onChange={(e) => setPYield(e.target.value)}
+              placeholder="e.g. 20"
+              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Duration (Term Days)</label>
+            <input
+              type="number"
+              required
+              value={pDays}
+              onChange={(e) => setPDays(e.target.value)}
+              placeholder="e.g. 30"
+              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Min Sponsor Limit (₦)</label>
+            <input
+              type="number"
+              required
+              value={pMin}
+              onChange={(e) => setPMin(e.target.value)}
+              placeholder="e.g. 3000"
+              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Max Sponsor Limit (₦)</label>
+            <input
+              type="number"
+              required
+              value={pMax}
+              onChange={(e) => setPMax(e.target.value)}
+              placeholder="e.g. 150000"
+              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
+            />
+          </div>
+
+          <div className="col-span-2">
+            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Illustration Photo URL</label>
+            <input
+              type="text"
+              required
+              value={pImg}
+              onChange={(e) => setPImg(e.target.value)}
+              placeholder="https://images.unsplash.com/photo-..."
+              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
+            />
+          </div>
+
+          <div className="col-span-2 sm:col-span-1">
+            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Plan Initial Status</label>
+            <select
+              value={pStatus}
+              onChange={(e: any) => setPStatus(e.target.value)}
+              className="w-full bg-slate-950 border border-white/10 rounded-xl p-2.5 text-xs text-white"
+            >
+              <option value="active">Active (Visible to user sponsors)</option>
+              <option value="inactive">Inactive (Disabled / Hidden)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Detailed Blueprint Description</label>
+          <textarea
+            required
+            rows={3}
+            value={pDesc}
+            onChange={(e) => setPDesc(e.target.value)}
+            placeholder="Discuss veterinary monitoring parameters, live feeding audits protocols, export channels and security..."
+            className="w-full glass-input rounded-xl p-2.5 text-xs leading-relaxed text-white"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full py-3 bg-gold-accent hover:bg-yellow-500 disabled:opacity-50 text-slate-950 font-black rounded-xl text-xs uppercase tracking-widest transition-all cursor-pointer shadow-md flex items-center justify-center gap-1"
+        >
+          {isSubmitting ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : pId ? (
+            "Update Operational Blueprint"
+          ) : (
+            "Deploy Live Package Blueprint"
+          )}
+        </button>
+      </form>
+
+      {/* Plans List */}
+      <div className="space-y-3 pt-2">
+        <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold">Current System Blueprints ({plans.length})</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {plans.map((p) => {
+            const isPlanDisabled = p.status === "inactive";
+            return (
+              <div 
+                key={p.id} 
+                className={`glass-panel p-4 rounded-2xl flex flex-col justify-between border transition-all ${
+                  isPlanDisabled ? "border-amber-500/20 bg-slate-950/40 opacity-70" : "hover:border-white/10"
+                }`}
+              >
+                <div className="flex gap-3 mb-4">
+                  <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-white/10 bg-black">
+                    <img src={p.imageUrl} alt={p.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      {p.name}
+                      <span className={`text-[8px] font-mono tracking-widest font-black uppercase px-2 py-0.5 rounded ${
+                        isPlanDisabled 
+                          ? "bg-slate-900 border border-slate-700 text-slate-400" 
+                          : "bg-emerald-950 border border-emerald-500/20 text-emerald-400"
+                      }`}>
+                        {p.status || "active"}
+                      </span>
+                    </h4>
+                    <span className="text-[10px] text-slate-400 font-mono uppercase block mt-1.5">
+                      Class: {p.type} • +{p.profitPercent}% Yield • {p.durationDays} Days Incubation
+                    </span>
+                    <span className="text-[10px] text-gold-accent font-mono block mt-0.5">
+                      Limits: ₦{p.minAmount.toLocaleString()} - ₦{p.maxAmount.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 border-t border-white/5 pt-3 justify-between items-center">
+                  <button
+                    onClick={() => handleTogglePlanState(p)}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-mono font-bold uppercase transition-all ${
+                      isPlanDisabled
+                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-slate-950"
+                        : "bg-amber-500/10 text-amber-400 border border-gold-accent/20 hover:bg-amber-500 hover:text-slate-950"
+                    }`}
+                  >
+                    {isPlanDisabled ? "Enable Plan" : "Disable Plan"}
+                  </button>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleSelectToEdit(p)}
+                      className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-gold-accent text-[9px] font-mono font-bold transition-all"
+                    >
+                      <Edit className="w-3 h-3 inline mr-1" /> Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Are you completely sure you want to hard delete/remove '${p.name}'?`)) {
+                          deletePlan(p.id);
+                        }
+                      }}
+                      className="py-1.5 px-3 rounded-lg bg-red-950/20 hover:bg-red-500 hover:text-white text-red-400 text-[9px] font-mono font-bold transition-all"
+                    >
+                      <Trash2 className="w-3 h-3 inline mr-1" /> Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 6. Farm Updates Management Board (Add, Edit, Delete Updates with Presets)
+function FarmUpdatesManagementView() {
+  const { farmUpdates, createFarmUpdate, editFarmUpdate, deleteFarmUpdate, navigate } = useFarm();
+
+  // Update input Form status
+  const [uId, setUId] = useState("");
+  const [uTitle, setUTitle] = useState("");
+  const [uDesc, setUDesc] = useState("");
+  const [uType, setUType] = useState<"Chicken" | "Pig" | "General">("General");
+  const [uImgRaw, setUImgRaw] = useState(PHOTO_PRESETS[0].url);
+  const [uVidRaw, setUVidRaw] = useState("");
+  
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Form submit handler
+  const handleLogSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uTitle.trim() || !uDesc.trim() || !uImgRaw.trim()) {
+      alert("Please specify operational summary, description and thumbnail photo.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      if (uId) {
+        // Edit flow
+        await editFarmUpdate(
+          uId,
+          uTitle.trim(),
+          uDesc.trim(),
+          uType,
+          uImgRaw.trim(),
+          uVidRaw.trim() || undefined
+        );
+        alert(`Success! Operational Log '${uTitle}' updated successfully in the DB.`);
+      } else {
+        // Create flow
+        await createFarmUpdate(
+          uTitle.trim(),
+          uDesc.trim(),
+          uType,
+          uImgRaw.trim(),
+          uVidRaw.trim() || undefined
+        );
+        alert("Success! Operational update published.");
+      }
+
+      // Reset Form fields
+      setUId("");
+      setUTitle("");
+      setUDesc("");
+      setUType("General");
+      setUImgRaw(PHOTO_PRESETS[0].url);
+      setUVidRaw("");
+    } catch (err: any) {
+      alert(`Fatal Error sending operational audit update: ${err.message || String(err)}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSelectToEditUpdate = (item: FarmUpdate) => {
+    setUId(item.id);
+    setUTitle(item.title);
+    setUDesc(item.content);
+    setUType(item.type || "General");
+    setUImgRaw(item.imageUrl);
+    setUVidRaw(item.videoUrl || "");
+    
+    // Smooth scroll to editor form
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleRemoveUpdate = async (item: FarmUpdate) => {
+    if (!confirm(`Are you sure you want to permanently delete '${item.title}' operational update from the database?`)) return;
+    try {
+      await deleteFarmUpdate(item.id);
+      alert("Operational Log deleted successfully.");
+    } catch (err: any) {
+      alert(`Error deleting update: ${err.message || String(err)}`);
+    }
+  };
+
+  return (
+    <div className="space-y-6 pb-24 text-left">
+      <div>
+        <button onClick={() => navigate("admin-dashboard")} className="text-xs text-gold-accent font-semibold hover:underline flex items-center gap-1">
+          ← Back Control Center
+        </button>
+        <h2 className="text-2xl font-black font-display text-white mt-1">Live Operational Updates</h2>
+        <p className="text-xs text-slate-400">Post or edit bio-security reports, feeding cycles & live video logs directly to users</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Creator Form - Col 7 */}
+        <div className="lg:col-span-7 glass-panel p-6 rounded-2xl space-y-5 border border-amber-500/15 bg-slate-950/20">
+          <div className="flex justify-between items-center border-b border-white/5 pb-3">
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-white">
+                {uId ? "🛠️ Edit Operational Log" : "➕ Post New Operational Log"}
+              </h3>
+              <p className="text-[10px] text-slate-400">Manage real photos, feeding summaries & video loops uploads</p>
+            </div>
+            {uId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setUId(""); setUTitle(""); setUDesc(""); setUType("General"); setUImgRaw(PHOTO_PRESETS[0].url); setUVidRaw("");
+                }}
+                className="text-[10px] font-mono hover:text-white text-slate-400 uppercase font-bold"
+              >
+                Exit edit [X]
+              </button>
+            )}
+          </div>
+
+          <form onSubmit={handleLogSubmit} className="space-y-4">
+            <div>
+              <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1.5 font-bold tracking-wider">
+                Log Category / Activity Type
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["Chicken", "Pig", "General"] as const).map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => {
+                      setUType(cat);
+                      const matchedPreset = PHOTO_PRESETS.find(p => p.category === cat);
+                      if (matchedPreset) setUImgRaw(matchedPreset.url);
+                    }}
+                    className={`py-2 text-[10px] font-bold rounded-lg uppercase tracking-wider transition-all border ${
+                      uType === cat
+                        ? "bg-slate-900 text-gold-accent border-gold-accent/50 shadow-md"
+                        : "bg-slate-950/50 text-slate-400 border-white/5 hover:border-white/10"
+                    }`}
+                  >
+                    {cat === "Chicken" ? "🐔 Poultry" : cat === "Pig" ? "🐷 Piggery" : "📡 Technical"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1.5 font-bold tracking-wider">
+                Operational Title
+              </label>
+              <input
+                type="text"
+                required
+                value={uTitle}
+                onChange={(e) => setUTitle(e.target.value)}
+                placeholder="e.g., Feeding Audit Session #14 on Broiler Yard A Completes"
+                className="w-full glass-input rounded-xl p-3.5 text-xs text-white placeholder-slate-500 font-sans"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1.5 font-bold tracking-wider">
+                Detailed Live Log / Description
+              </label>
+              <textarea
+                required
+                rows={4}
+                value={uDesc}
+                onChange={(e) => setUDesc(e.target.value)}
+                placeholder="Discuss bio-security level scores, feed consumption, veterinary reports, etc."
+                className="w-full glass-input rounded-xl p-3.5 text-xs text-white placeholder-slate-500 leading-relaxed font-sans"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1.5 font-bold tracking-wider">
+                Featured Cover Image URL
+              </label>
+              <input
+                type="text"
+                required
+                value={uImgRaw}
+                onChange={(e) => setUImgRaw(e.target.value)}
+                placeholder="https://images.unsplash.com/photo-..."
+                className="w-full glass-input rounded-xl p-3 text-xs text-white placeholder-slate-550 font-mono"
+              />
+
+              {/* Cover Photo presets quick selector */}
+              <div className="mt-2.5 bg-slate-950/40 p-2.5 rounded-xl border border-white/5">
+                <span className="text-[8.5px] font-mono uppercase text-slate-400 block mb-2 font-bold tracking-wider">
+                  Preset Premium Farm Photo Selectors:
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {PHOTO_PRESETS.map((p) => (
+                    <button
+                      key={p.name}
+                      type="button"
+                      onClick={() => {
+                        setUImgRaw(p.url);
+                        if (p.category === "Chicken" || p.category === "Pig") {
+                          setUType(p.category);
+                        } else {
+                          setUType("General");
+                        }
+                      }}
+                      className={`flex items-center gap-1.5 p-1 rounded border text-left text-[9px] font-semibold truncate transition-all ${
+                        uImgRaw === p.url
+                          ? "bg-slate-900 border-gold-accent text-gold-accent font-black"
+                          : "bg-slate-950/40 border-white/5 hover:border-white/10 text-slate-350"
+                      }`}
+                    >
+                      <img src={p.url} alt={p.name} referrerPolicy="no-referrer" className="w-4 h-4 rounded object-cover shrink-0" />
+                      <span className="truncate">{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1.5 font-bold tracking-wider">
+                Associated Video MP4 Attachment URL (Optional)
+              </label>
+              <input
+                type="text"
+                value={uVidRaw}
+                onChange={(e) => setUVidRaw(e.target.value)}
+                placeholder="e.g. https://assets.mixkit.co/videos/...mp4"
+                className="w-full glass-input rounded-xl p-3 text-xs text-white placeholder-slate-550 font-mono"
+              />
+
+              {/* Video attachments loops selection */}
+              <div className="mt-2.5 bg-slate-950/40 p-2.5 rounded-xl border border-white/5">
+                <span className="text-[8.5px] font-mono uppercase text-slate-400 block mb-2 font-bold tracking-wider">
+                  Preset Livestock Video Feed Attachment Selectors:
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  {VIDEO_PRESETS.map((v) => (
+                    <button
+                      key={v.name}
+                      type="button"
+                      onClick={() => setUVidRaw(v.url)}
+                      className={`flex items-center gap-1.5 p-1.5 rounded border text-left text-[8.5px] font-mono font-bold transition-all truncate ${
+                        uVidRaw === v.url
+                          ? "bg-slate-900 border-cyan-400 text-cyan-400"
+                          : "bg-slate-950/40 border-white/5 hover:border-white/10 text-slate-300"
+                      }`}
+                    >
+                      <Play className="w-3 h-3 text-cyan-400 shrink-0" />
+                      <span className="truncate">{v.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="w-full py-3.5 bg-gold-accent hover:bg-yellow-500 disabled:opacity-50 text-slate-950 font-black rounded-xl text-xs uppercase tracking-widest transition-all cursor-pointer shadow-lg flex items-center justify-center gap-1.5"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="animate-spin w-4 h-4 text-slate-950" /> Saving to Database...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 text-slate-950" /> {uId ? "Commit Edit Changes" : "Dispatch Operational Log"}
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+
+        {/* List of Updates - Col 5 */}
+        <div className="lg:col-span-5 space-y-4">
+          <span className="text-[10px] font-mono font-bold uppercase text-slate-405 block tracking-widest px-1">
+            📦 Current Updates Pipeline ({farmUpdates.length})
+          </span>
+
+          <div className="space-y-4 max-h-[640px] overflow-y-auto pr-1">
+            {farmUpdates.map((item) => (
+              <div key={item.id} className="glass-panel p-4 rounded-xl space-y-3 relative overflow-hidden bg-slate-900/10">
+                <div className="flex gap-3">
+                  <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-slate-950 border border-white/5 relative">
+                    <img src={item.imageUrl} alt={item.title} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                    {item.videoUrl && (
+                      <span className="absolute bottom-1 right-1 bg-cyan-400 text-slate-950 rounded p-0.5 text-[7px] font-black uppercase font-mono">
+                        VID
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-[8px] bg-sky-950/80 text-sky-400 border border-sky-500/10 rounded px-1.5 py-0.5 uppercase tracking-wider font-mono">
+                      {item.type || "General"}
+                    </span>
+                    <h4 className="text-[11.5px] font-bold text-white line-clamp-2 mt-1 leading-snug">{item.title}</h4>
+                    <span className="text-[8.5px] text-slate-500 font-mono block mt-1">
+                      {new Date(item.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-end border-t border-white/5 pt-2">
+                  <button
+                    onClick={() => handleSelectToEditUpdate(item)}
+                    className="py-1 px-2.5 rounded bg-slate-800 hover:bg-slate-700 text-gold-accent text-[9px] font-mono font-bold transition-all flex items-center gap-1"
+                  >
+                    <Edit className="w-3 h-3" /> Edit
+                  </button>
+                  <button
+                    onClick={() => handleRemoveUpdate(item)}
+                    className="py-1 px-2.5 rounded bg-red-950/20 hover:bg-red-500 hover:text-white text-red-400 text-[9px] font-mono font-bold transition-all flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" /> Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 7. Broadcast Bulletins System View (Announcements & Investment Updates)
+function NotificationsManagementView() {
+  const { sendBroadcastNotification, navigate } = useFarm();
+  const [notifTitle, setNotifTitle] = useState("");
+  const [notifMsg, setNotifMsg] = useState("");
+  const [targetId, setTargetId] = useState("all");
+  const [notifCategory, setNotifCategory] = useState<"Announcement" | "Investment Update">("Announcement");
+  const [isSending, setIsSending] = useState(false);
+
+  const handleBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!notifTitle.trim() || !notifMsg.trim()) {
+      alert("Please specify a notification title and complete alert body.");
+      return;
+    }
+
+    setIsSending(true);
+    // Combine bullet details if they selected Investment updates style
+    const pushTitle = notifCategory === "Investment Update"
+      ? `📈 PORTFOLIO ALERT: ${notifTitle.trim()}`
+      : `📣 BULLETIN: ${notifTitle.trim()}`;
+
+    try {
+      await sendBroadcastNotification(pushTitle, notifMsg.trim(), targetId);
+      alert("Success! Bulletin alert has been dispatched and stored on Appwrite databases successfully.");
+      setNotifTitle("");
+      setNotifMsg("");
+    } catch (err: any) {
+      alert(`Broadcast failed: ${err.message || String(err)}`);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 pb-24 text-left">
+      <div>
+        <button onClick={() => navigate("admin-dashboard")} className="text-xs text-gold-accent font-semibold hover:underline flex items-center gap-1">
+          ← Back Control Center
+        </button>
+        <h2 className="text-2xl font-black font-display text-white mt-1">Platform Bulletins</h2>
+        <p className="text-xs text-slate-400">Broadcast official alerts or active investment portfolio statements directly to sponsor layouts</p>
+      </div>
+
+      <form onSubmit={handleBroadcast} className="glass-panel p-6 rounded-2xl space-y-4 border border-purple-500/15 bg-slate-950/20 max-w-2xl">
+        <h3 className="text-xs font-mono uppercase tracking-wider text-purple-400 font-bold">➕ Deploy Broadcast Bulletin</h3>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1.5 font-bold tracking-wider">Bulletin Dispatch Class</label>
+            <div className="flex gap-2 bg-slate-950 p-1 border border-white/5 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setNotifCategory("Announcement")}
+                className={`flex-1 py-2 text-[10px] font-mono font-bold uppercase rounded-lg transition-all ${
+                  notifCategory === "Announcement"
+                    ? "bg-purple-650 text-white"
+                    : "text-slate-450 hover:text-white"
+                }`}
+              >
+                📢 Announcement
+              </button>
+              <button
+                type="button"
+                onClick={() => setNotifCategory("Investment Update")}
+                className={`flex-1 py-2 text-[10px] font-mono font-bold uppercase rounded-lg transition-all ${
+                  notifCategory === "Investment Update"
+                    ? "bg-amber-500 text-slate-950"
+                    : "text-slate-450 hover:text-white"
+                }`}
+              >
+                📈 Portfolio Update
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1.5 font-bold tracking-wider">Target Sponsor Segment</label>
+            <select
+              value={targetId}
+              onChange={(e) => setTargetId(e.target.value)}
+              className="w-full bg-slate-950 border border-white/10 rounded-xl p-2.5 text-xs text-white h-11"
+            >
+              <option value="all">Broadcast Global Segment (All Sponsors)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1.5 font-bold tracking-wider">Bulletin Header Title</label>
+          <input
+            type="text"
+            required
+            value={notifTitle}
+            onChange={(e) => setNotifTitle(e.target.value)}
+            placeholder="e.g. Major Feed Shipments Cleared at Broiler Port"
+            className="w-full glass-input rounded-xl p-3 text-xs text-white"
+          />
+        </div>
+
+        <div>
+          <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1.5 font-bold tracking-wider">Alert Message Copy</label>
+          <textarea
+            required
+            rows={5}
+            value={notifMsg}
+            onChange={(e) => setNotifMsg(e.target.value)}
+            placeholder="Provide complete descriptions regarding veterinary checks, shipment numbers, or critical security updates..."
+            className="w-full glass-input rounded-xl p-3 text-xs leading-relaxed text-white whitespace-pre-wrap"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={isSending}
+          className="w-full py-3.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 font-black rounded-xl text-xs uppercase tracking-widest text-white transition-all cursor-pointer shadow-lg flex items-center justify-center gap-1.5"
+        >
+          {isSending ? (
+            <Loader2 className="animate-spin w-4 h-4 text-white" />
+          ) : (
+            <>
+              <Check className="w-4 h-4 text-white" /> Dispatch Live Push Notification
+            </>
+          )}
+        </button>
+      </form>
+    </div>
+  );
+}

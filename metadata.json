@@ -1,0 +1,6 @@
+{
+  "name": "FarmRise",
+  "description": "A high-yield mobile-first agriculture investment platform specialising in Chicken and Pig farming with secure Real-time Operations and AI updates",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

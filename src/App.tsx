@@ -1,0 +1,447 @@
+import React, { useState, useEffect } from "react";
+import { FarmProvider, useFarm } from "./context/FarmContext";
+import { SplashScreen, LoginPage, RegisterPage } from "./components/AuthPages";
+import UserPages from "./components/UserPages";
+import AdminPages from "./components/AdminPages";
+import FarmUpdatesPage from "./components/FarmUpdatesPage";
+import { 
+  Compass, LayoutDashboard, Calendar, User, Bell, 
+  Sparkles, CheckCircle2, CircleDollarSign, LogOut, Lock
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+
+function MainAppShell() {
+  const { 
+    currentUser, 
+    currentPage, 
+    navigate, 
+    notifications, 
+    markNotificationRead: markNotificationAsRead
+  } = useFarm();
+
+  const [isSplashActive, setSplashActive] = useState(true);
+  const [notifPanelOpen, setNotifPanelOpen] = useState(false);
+
+  // Splash Screen timer
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSplashActive(false);
+    }, 2400);
+    return () => clearTimeout(timer);
+  }, [setSplashActive]);
+
+  if (isSplashActive) {
+    return <SplashScreen />;
+  }
+
+  // Not logged in routing
+  if (!currentUser) {
+    if (currentPage === "register") {
+      return <RegisterPage />;
+    }
+    return <LoginPage />;
+  }
+
+  // Account suspension block
+  if (currentUser?.isBanned) {
+    return (
+      <div className="min-h-screen bg-[#081120] flex items-center justify-center p-6 text-center font-sans">
+        <div className="max-w-md w-full glass-panel p-8 rounded-3xl border border-red-500/20 bg-slate-950/40 space-y-6">
+          <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto">
+            <Lock className="w-8 h-8 text-red-500" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-white font-display uppercase tracking-wider">Account Suspended</h2>
+            <p className="text-xs text-slate-400">
+              Your FarmRise sponsor account has been suspended/banned due to security precautions or policy violations.
+            </p>
+          </div>
+          <div className="bg-slate-900/60 border border-white/5 p-4 rounded-2xl text-[10px] text-slate-450 leading-relaxed font-mono">
+            If you believe this is a clerical mistake, contact FarmRise Support Operations directly: support@farmrise.co
+          </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem("fr_current_user");
+              window.location.reload();
+            }}
+            className="w-full py-3.5 bg-red-700/60 hover:bg-red-600/80 font-bold rounded-xl text-xs uppercase tracking-wider transition-all border border-red-500/20"
+          >
+            Acknowledge & Sign Out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Admin routing check
+  const isAdminView = currentPage.startsWith("admin-");
+
+  if (isAdminView && !currentUser?.isAdmin) {
+    setTimeout(() => navigate("dashboard"), 0);
+    return null;
+  }
+
+  const unreadNotifs = notifications.filter((n) => !n.read);
+
+  return (
+    <div className="min-h-screen bg-[#081120] text-white flex flex-col md:flex-row font-sans overflow-hidden">
+      
+      {/* 1. Desktop Left Sidebar */}
+      <aside className="hidden md:flex w-64 border-r border-white/5 bg-black/20 flex-col p-6 shrink-0 justify-between">
+        <div className="space-y-8">
+          {/* Logo Brand */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-[#2ECC71] to-[#F5B300] rounded-xl flex items-center justify-center font-display font-black text-slate-900 text-lg">
+              FR
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-white font-display">FarmRise</h1>
+              <span className="text-[9px] font-mono uppercase bg-gold-accent/15 text-gold-accent px-1.5 py-0.5 rounded-md font-semibold tracking-wide block w-fit">
+                Live Terminal
+              </span>
+            </div>
+          </div>
+
+          {/* Navigation Items */}
+          <nav className="space-y-1.5">
+            <button
+              onClick={() => navigate("dashboard")}
+              className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all text-sm font-medium ${
+                currentPage === "dashboard" 
+                  ? "bg-white/10 text-[#F5B300] shadow-sm" 
+                  : "text-white/40 hover:text-white/80 hover:bg-white/5"
+              }`}
+            >
+              <LayoutDashboard className="w-5 h-5" />
+              <span>Dashboard</span>
+            </button>
+
+            <button
+              onClick={() => navigate("investment-plans")}
+              className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all text-sm font-medium ${
+                currentPage === "investment-plans" || currentPage === "investment-details"
+                  ? "bg-white/10 text-[#F5B300] shadow-sm" 
+                  : "text-white/40 hover:text-white/80 hover:bg-white/5"
+              }`}
+            >
+              <Compass className="w-5 h-5" />
+              <span>Sponsor plans</span>
+            </button>
+
+            <button
+              onClick={() => navigate("active-investments")}
+              className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all text-sm font-medium ${
+                currentPage === "active-investments"
+                  ? "bg-white/10 text-[#F5B300] shadow-sm" 
+                  : "text-white/40 hover:text-white/80 hover:bg-white/5"
+              }`}
+            >
+              <CircleDollarSign className="w-5 h-5" />
+              <span>My Portfolio</span>
+            </button>
+
+            <button
+              onClick={() => navigate("farm-updates")}
+              className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all text-sm font-medium ${
+                currentPage === "farm-updates"
+                  ? "bg-white/10 text-[#F5B300] shadow-sm" 
+                  : "text-white/40 hover:text-white/80 hover:bg-white/5"
+              }`}
+            >
+              <Calendar className="w-5 h-5" />
+              <span>Farm Updates</span>
+            </button>
+
+            <button
+              onClick={() => navigate("profile")}
+              className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all text-sm font-medium ${
+                currentPage === "profile" || currentPage === "referral" || currentPage === "withdrawal"
+                  ? "bg-white/10 text-[#F5B300] shadow-sm" 
+                  : "text-white/40 hover:text-white/80 hover:bg-white/5"
+              }`}
+            >
+              <User className="w-5 h-5" />
+              <span>Profile Settings</span>
+            </button>
+
+            {currentUser?.isAdmin && (
+              <button
+                onClick={() => navigate(isAdminView ? "dashboard" : "admin-dashboard")}
+                className={`w-full p-3 rounded-xl flex items-center gap-3 transition-all text-sm font-bold border ${
+                  isAdminView 
+                    ? "bg-purple-500/20 text-purple-300 border-purple-500/30" 
+                    : "text-purple-400/60 hover:text-purple-300 border-transparent hover:bg-purple-500/5 hover:border-purple-500/10"
+                }`}
+              >
+                <Bell className="w-5 h-5 text-purple-400" />
+                <span>Admin Panel</span>
+              </button>
+            )}
+          </nav>
+        </div>
+
+        {/* User Capsule at bottom */}
+        <div 
+          onClick={() => navigate("profile")}
+          className="bg-white/5 p-4 rounded-2xl flex items-center gap-3 border border-white/5 cursor-pointer hover:bg-white/10 transition-colors"
+        >
+          <div className="w-10 h-10 rounded-full bg-[#F5B300]/20 flex items-center justify-center text-[#F5B300] font-bold">
+            {currentUser?.name?.substring(0, 2).toUpperCase() || "JD"}
+          </div>
+          <div className="flex-1 text-left min-w-0">
+            <p className="text-xs font-semibold truncate text-white">{currentUser?.name}</p>
+            <p className="text-[10px] text-white/40 truncate">
+              {currentUser?.isAdmin ? "HQ Admin Account" : "Premium Sponsor"}
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      {/* 2. Right Widescreen Panel */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        
+        {/* Mobile Header */}
+        {!isAdminView && (
+          <header className="px-6 pt-5 pb-3 flex md:hidden justify-between items-center bg-slate-950/45 backdrop-blur-md z-30 border-b border-white/5 shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-base font-extrabold tracking-tight font-display bg-gradient-to-r from-[#F5B300] to-[#2ECC71] bg-clip-text text-transparent">
+                FarmRise
+              </span>
+              <span className="text-[9px] font-mono uppercase bg-gold-accent/15 text-gold-accent px-1.5 py-0.5 rounded-md font-semibold tracking-wide">
+                Live
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setNotifPanelOpen(true)}
+                className="relative p-2 rounded-full bg-slate-900 border border-white/5 opacity-90 active:scale-95 transition-all cursor-pointer"
+              >
+                <Bell className="w-4 h-4 text-slate-300" />
+                {unreadNotifs.length > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-gold-accent rounded-full animate-bounce ring-2 ring-[#081120]" />
+                )}
+              </button>
+            </div>
+          </header>
+        )}
+
+        {/* Desktop Header */}
+        <header className="hidden md:flex justify-between items-center px-8 py-5 border-b border-white/5 bg-slate-950/10 shrink-0">
+          <div>
+            <h2 className="text-2xl font-bold text-white font-display">
+              {currentPage === "dashboard" && "Investor Overview"}
+              {currentPage === "investment-plans" && "Sponsor Farm Packages"}
+              {currentPage === "investment-details" && "Configure Livestock Contract"}
+              {currentPage === "active-investments" && "My Livestock Portfolio"}
+              {currentPage === "farm-updates" && "Live Farm updates Feed"}
+              {currentPage === "profile" && "Investor profile Settings"}
+              {currentPage === "withdrawal" && "Agricultural Yield redemption"}
+              {currentPage === "deposit" && "Add sponsored coins to balance"}
+              {currentPage === "referral" && "Cultivate group sponsors"}
+              {currentPage.startsWith("admin-") && "FarmRise Control Center"}
+            </h2>
+            <p className="text-xs text-white/40 mt-1">
+              {currentPage === "dashboard" && "Welcome back, tracking your live farm yields and cycles."}
+              {currentPage === "investment-plans" && "Browse active poultry laying and piggery incubator plans."}
+              {currentPage === "investment-details" && "Configure subscription size and review program yields."}
+              {currentPage === "active-investments" && "Live incubation statuses and animal programs."}
+              {currentPage === "farm-updates" && "Review real-time pig & poultry farm activities and telemetry."}
+              {currentPage === "profile" && "Manage accounts metadata & diagnostic systems."}
+              {currentPage === "withdrawal" && "Redeem your agricultural yield crops to bank accounts."}
+              {currentPage === "deposit" && "Step-by-step wire deposits and transaction validations."}
+              {currentPage === "referral" && "Share your custom referral links and earn standard 5% commission."}
+              {currentPage.startsWith("admin-") && "HQ Administrative operational metrics & verification queues."}
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex gap-2">
+              <button
+                onClick={() => navigate("deposit")}
+                className="px-5 py-2 bg-[#F5B300] hover:bg-yellow-500 text-slate-950 font-bold rounded-xl text-xs uppercase cursor-pointer"
+              >
+                Deposit
+              </button>
+              <button
+                onClick={() => navigate("withdrawal")}
+                className="px-5 py-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-semibold rounded-xl text-xs cursor-pointer"
+              >
+                Withdraw
+              </button>
+            </div>
+            <button
+              onClick={() => setNotifPanelOpen(true)}
+              className="p-2.5 rounded-xl bg-white/5 border border-white/10 relative text-white hover:bg-white/10 cursor-pointer"
+            >
+              <Bell className="w-5 h-5 text-white/80" />
+              {unreadNotifs.length > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-gold-accent rounded-full animate-bounce ring-2 ring-[#081120]" />
+              )}
+            </button>
+          </div>
+        </header>
+
+        {/* Dynamic content area */}
+        <main className="flex-1 overflow-y-auto px-6 pt-6 pb-24 md:p-8 bg-gradient-to-b from-[#081120] to-[#040912]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentPage}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+              className="h-full max-w-7xl mx-auto"
+            >
+              {isAdminView ? (
+                <AdminPages />
+              ) : currentPage === "farm-updates" ? (
+                <FarmUpdatesPage />
+              ) : (
+                <UserPages />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </main>
+
+        {/* Mobile Navigation bar */}
+        {!isAdminView && (
+          <nav className="fixed bottom-0 left-0 right-0 py-3.5 px-5 bg-slate-950/95 backdrop-blur-xl border-t border-white/5 flex md:hidden justify-between items-center z-40 shadow-[0_-8px_30px_rgb(0,0,0,0.5)]">
+            <button
+              onClick={() => navigate("dashboard")}
+              className={`flex flex-col items-center gap-1 transition-all flex-1 ${
+                currentPage === "dashboard" ? "text-gold-accent font-bold" : "text-white/40 hover:text-white"
+              }`}
+            >
+              <LayoutDashboard className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Home</span>
+            </button>
+
+            <button
+              onClick={() => navigate("investment-plans")}
+              className={`flex flex-col items-center gap-1 transition-all flex-1 ${
+                currentPage === "investment-plans" || currentPage === "investment-details" 
+                  ? "text-gold-accent font-bold" 
+                  : "text-white/40 hover:text-white"
+              }`}
+            >
+              <Compass className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Sponsor</span>
+            </button>
+
+            <button
+              onClick={() => navigate("active-investments")}
+              className={`flex flex-col items-center gap-1 transition-all flex-1 ${
+                currentPage === "active-investments" ? "text-gold-accent font-bold" : "text-white/40 hover:text-white"
+              }`}
+            >
+              <CircleDollarSign className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Portfolio</span>
+            </button>
+
+            <button
+              onClick={() => navigate("farm-updates")}
+              className={`flex flex-col items-center gap-1 transition-all flex-1 ${
+                currentPage === "farm-updates" ? "text-gold-accent font-bold" : "text-white/40 hover:text-white"
+              }`}
+            >
+              <Calendar className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Updates</span>
+            </button>
+
+            <button
+              onClick={() => navigate("profile")}
+              className={`flex flex-col items-center gap-1 transition-all flex-1 ${
+                currentPage === "profile" || currentPage === "referral" || currentPage === "withdrawal"
+                  ? "text-gold-accent font-bold" 
+                  : "text-white/40 hover:text-white"
+              }`}
+            >
+              <User className="w-5 h-5" />
+              <span className="text-[10px] font-medium">Profile</span>
+            </button>
+          </nav>
+        )}
+
+      </div>
+
+      {/* Notifications overlay Drawer */}
+      <AnimatePresence>
+        {notifPanelOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setNotifPanelOpen(false)}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-end"
+          >
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-slate-950 border-l border-white/5 h-full w-full max-w-md p-6 flex flex-col shadow-2xl"
+            >
+              {/* Header */}
+              <div className="flex justify-between items-center mb-6 shrink-0">
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-1.5 font-display">
+                    🔔 Bulletins Inbox
+                  </h3>
+                  <p className="text-xs text-white/40">Official real-world farming bulletins</p>
+                </div>
+                <button
+                  onClick={() => setNotifPanelOpen(false)}
+                  className="text-xs uppercase font-mono tracking-wider text-white/60 font-bold hover:text-white cursor-pointer px-3 py-1.5 rounded-lg bg-white/5 border border-white/10"
+                >
+                  Close
+                </button>
+              </div>
+
+              {/* Notifications list */}
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                {notifications.length === 0 ? (
+                  <div className="text-center py-16">
+                    <Bell className="text-white/10 w-12 h-12 mx-auto mb-3" />
+                    <p className="text-xs text-white/40">Your bulletin mailbox is clean.</p>
+                  </div>
+                ) : (
+                  notifications.map((notif) => (
+                    <div 
+                      key={notif.id}
+                      onClick={() => markNotificationAsRead(notif.id)}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex gap-3 ${
+                        notif.read 
+                          ? "bg-white/2 border-white/5 opacity-60" 
+                          : "bg-white/5 border-[#F5B300]/20 hover:border-[#F5B300]/40"
+                      }`}
+                    >
+                      <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${notif.read ? 'bg-white/20' : 'bg-[#F5B300]'}`} />
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-bold text-white leading-tight">{notif.title}</h4>
+                        <p className="text-[11px] text-white/70 leading-relaxed font-sans">{notif.message}</p>
+                        <span className="text-[9px] font-mono text-white/30 block">
+                          {new Date(notif.createdAt).toLocaleString(undefined, {
+                            month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <FarmProvider>
+      <MainAppShell />
+    </FarmProvider>
+  );
+}
