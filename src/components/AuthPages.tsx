@@ -132,14 +132,35 @@ export function LoginPage() {
             </div>
             
             <p className="text-[10.5px] leading-relaxed text-slate-300 font-sans">
-              Could not contact the Appwrite cloud node. This happens if the project is misconfigured, CORS authorization is missing, or the network is unreachable.
+              Could not contact the Appwrite cloud. This usually happens if domain authorization is pending or web CORS is disabled in your Appwrite panel.
             </p>
 
             <div className="bg-black/35 p-2 rounded-lg text-[9px] font-mono text-slate-400 border border-white/5 whitespace-pre-wrap overflow-x-auto max-h-[80px] break-all">
               {connectionError}
             </div>
 
-            <div className="flex gap-2 pt-1">
+            <div className="pt-1.5 border-t border-amber-500/10">
+              <button
+                type="button"
+                onClick={() => {
+                  saveAppwriteOverride({
+                    endpoint: "https://cloud.appwrite.io/v1",
+                    projectId: "",
+                    databaseId: "default",
+                    useMock: true
+                  });
+                }}
+                className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-slate-950 hover:opacity-95 rounded-xl text-[11px] font-extrabold uppercase tracking-wide transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/15"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Activate Sandbox Mode (No Setup!)
+              </button>
+              <p className="text-[9px] text-slate-405 text-center mt-1 text-slate-400">
+                ⚡ Play & test instantly in stable simulated offline sandbox!
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-1 border-t border-white/5">
               <button
                 type="button"
                 onClick={async () => {
@@ -153,10 +174,10 @@ export function LoginPage() {
                   }
                 }}
                 disabled={retryingConn}
-                className="flex-1 py-1.5 px-2 bg-amber-500/20 text-amber-350 hover:bg-amber-500/25 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border border-amber-500/30 font-sans"
+                className="flex-1 py-1.5 px-2 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border border-amber-500/20 font-sans"
               >
                 <RefreshCw className={`w-3 h-3 ${retryingConn ? "animate-spin" : ""}`} />
-                Reconnect
+                Retry Conn
               </button>
               
               <button
@@ -432,7 +453,7 @@ export function LoginPage() {
 }
 
 export function RegisterPage() {
-  const { registerWithEmail, navigate } = useFarm();
+  const { registerWithEmail, navigate, connectionError, reconnectAppwrite } = useFarm();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -440,6 +461,7 @@ export function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [referredBy, setReferredBy] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [retryingConn, setRetryingConn] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   // Scan and automatically prefill referral links (e.g., /register?ref=RISE1234)
@@ -491,6 +513,41 @@ export function RegisterPage() {
           <h2 className="text-xl font-bold font-display text-white">Join FarmRise</h2>
           <p className="text-xs text-slate-400 mt-1">Begin sponsoring premium livestock contracts</p>
         </div>
+
+        {connectionError && (
+          <div className="bg-amber-500/10 border border-amber-500/25 p-3.5 rounded-2xl text-xs mb-4 space-y-2.5 text-left">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-amber-400 font-mono text-[10px] uppercase tracking-wide flex items-center gap-1">
+                ⚠️ Connection Offline
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/12 text-amber-305 font-mono uppercase font-bold animate-pulse text-amber-450">
+                Offline Mode available
+              </span>
+            </div>
+            
+            <p className="text-[10.5px] leading-relaxed text-slate-300 font-sans">
+              Appwrite backend is offline. You can still test and play instantly in a simulated offline state!
+            </p>
+
+            <div className="pt-1 border-t border-amber-500/10">
+              <button
+                type="button"
+                onClick={() => {
+                  saveAppwriteOverride({
+                    endpoint: "https://cloud.appwrite.io/v1",
+                    projectId: "",
+                    databaseId: "default",
+                    useMock: true
+                  });
+                }}
+                className="w-full py-2 px-3 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-slate-950 hover:opacity-95 rounded-xl text-[10px] font-extrabold uppercase tracking-wide transition-all flex items-center justify-center gap-1 shadow-lg shadow-amber-500/15 animate-shimmer"
+              >
+                <Sparkles className="w-3 h-3" />
+                Activate Sandbox (Direct Registration)
+              </button>
+            </div>
+          </div>
+        )}
 
         {errorMsg && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-3 rounded-xl text-xs font-mono mb-4">
