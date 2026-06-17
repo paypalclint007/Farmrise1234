@@ -6,7 +6,7 @@ import {
   ChevronRight, ShieldCheck, AlertTriangle, HelpCircle, PlusCircle, Power,
   Users, UserCheck, Copy, UploadCloud, Check, FileImage
 } from "lucide-react";
-import { isMockAppwrite, testConnection, APPWRITE_CONFIG, verifyDepositsCollection } from "../appwrite";
+import { isMockAppwrite, testConnection, APPWRITE_CONFIG, verifyDepositsCollection, formatAppwriteEndpoint } from "../appwrite";
 import { motion } from "motion/react";
 import { ActiveInvestment } from "../types";
 
@@ -2060,8 +2060,8 @@ function ProfileView() {
           <div className="text-xs space-y-2 font-mono bg-black/30 p-3.5 rounded-xl border border-white/5">
             <div className="flex justify-between">
               <span className="text-slate-400">Endpoint:</span>
-              <span className="text-slate-200 text-right truncate max-w-[180px]">
-                {(import.meta as any).env?.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1"}
+              <span className="text-slate-200 text-right truncate max-w-[180px]" title={formatAppwriteEndpoint((import.meta as any).env?.VITE_APPWRITE_ENDPOINT || "")}>
+                {formatAppwriteEndpoint((import.meta as any).env?.VITE_APPWRITE_ENDPOINT || "")}
               </span>
             </div>
             <div className="flex justify-between">

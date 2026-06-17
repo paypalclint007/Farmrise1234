@@ -20,9 +20,30 @@ const isDevPreview = typeof window !== "undefined" && (
   window.location.hostname.includes("webcontainer.io")
 );
 
+export function formatAppwriteEndpoint(raw: string): string {
+  if (!raw) return "https://cloud.appwrite.io/v1";
+  let url = raw.trim();
+  if (url.includes("/api/appwrite")) {
+    return url;
+  }
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    url = "https://" + url;
+  }
+  if (url.endsWith("/")) {
+    url = url.slice(0, -1);
+  }
+  if (!url.endsWith("/v1")) {
+    url = url + "/v1";
+  }
+  return url;
+}
+
+const configuredRawEndpoint = metaEnv.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1";
+const cleanedConfiguredEndpoint = formatAppwriteEndpoint(configuredRawEndpoint);
+
 const endpoint = (typeof window !== "undefined" && isDevPreview)
   ? `${window.location.origin}/api/appwrite`
-  : (metaEnv.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1");
+  : cleanedConfiguredEndpoint;
 
 const projectId = metaEnv.VITE_APPWRITE_PROJECT_ID || "";
 

@@ -59,14 +59,25 @@ app.post("/api/appwrite/init", async (req, res) => {
 app.all("/api/appwrite/*", async (req, res) => {
   try {
     let appwriteEndpoint = process.env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1";
+    
     // Safeguard to prevent self-referencing loop if the env var is set to a relative or proxy path
     if (
-      !appwriteEndpoint.startsWith("http") ||
       appwriteEndpoint.includes("/api/appwrite") ||
       appwriteEndpoint.includes("localhost") ||
       appwriteEndpoint.includes("127.0.0.1")
     ) {
       appwriteEndpoint = "https://cloud.appwrite.io/v1";
+    }
+
+    appwriteEndpoint = appwriteEndpoint.trim();
+    if (!appwriteEndpoint.startsWith("http://") && !appwriteEndpoint.startsWith("https://")) {
+      appwriteEndpoint = "https://" + appwriteEndpoint;
+    }
+    if (appwriteEndpoint.endsWith("/")) {
+      appwriteEndpoint = appwriteEndpoint.slice(0, -1);
+    }
+    if (!appwriteEndpoint.endsWith("/v1")) {
+      appwriteEndpoint = appwriteEndpoint + "/v1";
     }
 
     // Strip "/api/appwrite" from the beginning of the URL path but keep the query/subpaths
