@@ -55,11 +55,18 @@ export function getAppwriteConfig() {
   const cleanedEndpoint = formatAppwriteEndpoint(rawEndpoint);
   endpoint = isDevPreview ? `${window.location.origin}/api/appwrite` : cleanedEndpoint;
 
+  let useMock = !projectId;
+
   if (typeof window !== "undefined") {
     try {
       const stored = localStorage.getItem("fr_appwrite_override");
       if (stored) {
         const parsed = JSON.parse(stored);
+        if (parsed.useMock !== undefined) {
+          useMock = parsed.useMock;
+        } else if (parsed.projectId) {
+          useMock = false;
+        }
         if (parsed.endpoint) endpoint = formatAppwriteEndpoint(parsed.endpoint);
         if (parsed.projectId) projectId = parsed.projectId;
         if (parsed.databaseId) databaseId = parsed.databaseId;
@@ -73,7 +80,7 @@ export function getAppwriteConfig() {
   }
 
   return {
-    isMockAppwrite: !projectId,
+    isMockAppwrite: useMock,
     endpoint,
     projectId,
     databaseId,
@@ -93,6 +100,7 @@ export function saveAppwriteOverride(cfg: {
   endpoint: string;
   projectId: string;
   databaseId: string;
+  useMock?: boolean;
   collections?: Partial<typeof APPWRITE_CONFIG.collections>;
 }) {
   if (typeof window !== "undefined") {

@@ -22,6 +22,8 @@ interface FarmContextType {
   selectedPlan: InvestmentPlan | null;
   loading: boolean;
   isAdminMode: boolean;
+  connectionError: string | null;
+  reconnectAppwrite: () => Promise<void>;
   
   // Auth actions
   loginWithEmail: (email: string, pass: string) => Promise<void>;
@@ -356,12 +358,93 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [selectedPlan, setSelectedPlan] = useState<InvestmentPlan | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   // Sync state to local storage in mock mode
   const syncLocal = (key: string, data: any) => {
     if (isMockAppwrite) {
       localStorage.setItem(key, JSON.stringify(data));
     }
+  };
+
+  const checkSession = async () => {
+    try {
+      setConnectionError(null);
+      const userSession = await account.get();
+      if (userSession) {
+        let userProfile: UserProfile;
+        try {
+          const doc = await databases.getDocument(
+            APPWRITE_CONFIG.databaseId,
+            APPWRITE_CONFIG.collections.users,
+            userSession.$id
+          );
+          userProfile = mapUserFromDoc(doc);
+          // Securely enforce that only paypalclint007@gmail.com can be an administrator
+          userProfile.isAdmin = (userProfile.email || "").toLowerCase() === "paypalclint007@gmail.com";
+        } catch (err) {
+          // Create user profile document if missing or permissions are blocked
+          console.warn("Could not retrieve user document from database. Using local/fallback profile:", err);
+          const nameValue = userSession.name || "Agriculture Investor";
+          userProfile = {
+            id: userSession.$id,
+            email: userSession.email,
+            name: nameValue,
+            phoneNumber: userSession.phone || "",
+            balance: userSession.email.toLowerCase() === "paypalclint007@gmail.com" ? 25000 : 0,
+            totalInvested: 0,
+            totalEarnings: 0,
+            referralBonus: 0,
+            totalProfit: 0,
+            referralCode: "RISE" + Math.floor(Math.random() * 9000 + 1000),
+            referredBy: "",
+            isAdmin: userSession.email.toLowerCase() === "paypalclint007@gmail.com",
+            registeredAt: new Date().toISOString()
+          };
+          
+          // Try to write it in the database in the background, ignore any errors
+          try {
+            await databases.createDocument(
+              APPWRITE_CONFIG.databaseId,
+              APPWRITE_CONFIG.collections.users,
+              userSession.$id,
+              mapUserToDoc(userProfile)
+            );
+          } catch (createErr) {
+            console.warn("Failed to create profile in Appwrite database during session fallback:", createErr);
+          }
+        }
+        setCurrentUser(userProfile);
+        syncLocal("fr_current_user", userProfile);
+        setCurrentPage("dashboard");
+      } else {
+        setCurrentUser(null);
+        setCurrentPage("login");
+      }
+    } catch (err: any) {
+      console.error("Appwrite connection check or authentication failure:", err);
+      const isNetworkError = err.message?.toLowerCase().includes("failed to fetch") || 
+        err.name === "TypeError" || 
+        err.code === 0 || 
+        err.status === 0 || 
+        err.message?.toLowerCase().includes("network") ||
+        err.message?.toLowerCase().includes("cors");
+
+      if (isNetworkError) {
+        setConnectionError(err.message || "Failed to establish secure Appwrite connection.");
+      } else {
+        setConnectionError(null);
+      }
+      setCurrentUser(null);
+      setCurrentPage("login");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const reconnectAppwrite = async () => {
+    setLoading(true);
+    await checkSession();
   };
 
   // 1. Initial configuration check & Local state loading
@@ -407,68 +490,6 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }, 1500);
     } else {
-      // Real Appwrite Auth session recovery loop
-      const checkSession = async () => {
-        try {
-          const userSession = await account.get();
-          if (userSession) {
-            let userProfile: UserProfile;
-            try {
-              const doc = await databases.getDocument(
-                APPWRITE_CONFIG.databaseId,
-                APPWRITE_CONFIG.collections.users,
-                userSession.$id
-              );
-              userProfile = mapUserFromDoc(doc);
-              // Securely enforce that only paypalclint007@gmail.com can be an administrator
-              userProfile.isAdmin = (userProfile.email || "").toLowerCase() === "paypalclint007@gmail.com";
-            } catch (err) {
-              // Create user profile document if missing or permissions are blocked
-              console.warn("Could not retrieve user document from database. Using local/fallback profile:", err);
-              const nameValue = userSession.name || "Agriculture Investor";
-              userProfile = {
-                id: userSession.$id,
-                email: userSession.email,
-                name: nameValue,
-                phoneNumber: userSession.phone || "",
-                balance: userSession.email.toLowerCase() === "paypalclint007@gmail.com" ? 25000 : 0,
-                totalInvested: 0,
-                totalEarnings: 0,
-                referralBonus: 0,
-                totalProfit: 0,
-                referralCode: "RISE" + Math.floor(Math.random() * 9000 + 1000),
-                referredBy: "",
-                isAdmin: userSession.email.toLowerCase() === "paypalclint007@gmail.com",
-                registeredAt: new Date().toISOString()
-              };
-              
-              // Try to write it in the database in the background, ignore any errors
-              try {
-                await databases.createDocument(
-                  APPWRITE_CONFIG.databaseId,
-                  APPWRITE_CONFIG.collections.users,
-                  userSession.$id,
-                  mapUserToDoc(userProfile)
-                );
-              } catch (createErr) {
-                console.warn("Failed to create profile in Appwrite database during session fallback:", createErr);
-              }
-            }
-            setCurrentUser(userProfile);
-            syncLocal("fr_current_user", userProfile);
-            setCurrentPage("dashboard");
-          } else {
-            setCurrentUser(null);
-            setCurrentPage("login");
-          }
-        } catch (err) {
-          setCurrentUser(null);
-          setCurrentPage("login");
-        } finally {
-          setLoading(false);
-        }
-      };
-      
       checkSession();
     }
   }, []);
@@ -2041,6 +2062,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <FarmProviderValue {...{
       currentUser, plans, deposits, investments, withdrawals, notifications, 
       farmUpdates, users, referrals, currentPage, selectedPlan, loading, isAdminMode,
+      connectionError, reconnectAppwrite,
       loginWithEmail, registerWithEmail, logout, navigate, forgotPassword,
       createDeposit, createInvestment, withdrawMaturedInvestment, createWithdrawal, markNotificationRead,
       approveDeposit, rejectDeposit, approveWithdrawal, rejectWithdrawal,

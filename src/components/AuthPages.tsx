@@ -50,16 +50,18 @@ export function SplashScreen() {
 }
 
 export function LoginPage() {
-  const { loginWithEmail, forgotPassword, navigate } = useFarm();
+  const { loginWithEmail, forgotPassword, navigate, connectionError, reconnectAppwrite } = useFarm();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [retryingConn, setRetryingConn] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [viewState, setViewState] = useState<"login" | "forgot">("login");
 
   const initialCfg = getAppwriteConfig();
   const [showSettings, setShowSettings] = useState(false);
+  const [useMock, setUseMock] = useState(initialCfg.isMockAppwrite);
   const [customEndpoint, setCustomEndpoint] = useState(initialCfg.endpoint);
   const [customProjectId, setCustomProjectId] = useState(initialCfg.projectId);
   const [customDatabaseId, setCustomDatabaseId] = useState(initialCfg.databaseId);
@@ -118,9 +120,78 @@ export function LoginPage() {
           </p>
         </div>
 
+        {connectionError && (
+          <div className="bg-amber-500/10 border border-amber-500/25 p-3.5 rounded-2xl text-xs mb-4 space-y-2.5 text-left">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-amber-400 font-mono text-[10px] uppercase tracking-wide flex items-center gap-1">
+                ⚠️ Connection Offline
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/12 text-amber-305 font-mono uppercase font-bold animate-pulse text-amber-450">
+                Connection Fail
+              </span>
+            </div>
+            
+            <p className="text-[10.5px] leading-relaxed text-slate-300 font-sans">
+              Could not contact the Appwrite cloud node. This happens if the project is misconfigured, CORS authorization is missing, or the network is unreachable.
+            </p>
+
+            <div className="bg-black/35 p-2 rounded-lg text-[9px] font-mono text-slate-400 border border-white/5 whitespace-pre-wrap overflow-x-auto max-h-[80px] break-all">
+              {connectionError}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    setRetryingConn(true);
+                    await reconnectAppwrite();
+                  } catch (e) {
+                    console.error("Manual reconnect failed", e);
+                  } finally {
+                    setRetryingConn(false);
+                  }
+                }}
+                disabled={retryingConn}
+                className="flex-1 py-1.5 px-2 bg-amber-500/20 text-amber-350 hover:bg-amber-500/25 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 border border-amber-500/30 font-sans"
+              >
+                <RefreshCw className={`w-3 h-3 ${retryingConn ? "animate-spin" : ""}`} />
+                Reconnect
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSettings(true);
+                }}
+                className="px-2.5 py-1.5 border border-white/10 bg-white/5 hover:bg-white/10 rounded-lg text-[10px] text-slate-300 font-bold uppercase tracking-wider transition-all"
+              >
+                Configure
+              </button>
+            </div>
+          </div>
+        )}
+
         {errorMsg && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-3 rounded-xl text-xs font-mono mb-4">
-            ⚠️ {errorMsg}
+          <div className="bg-red-500/10 border border-red-500/20 text-red-100 p-3.5 rounded-xl text-xs font-sans mb-4 space-y-2">
+            <div className="flex gap-2 text-red-200 font-bold font-mono">
+              <span>⚠️</span>
+              <span>Authentication Error</span>
+            </div>
+            <p className="font-mono text-[11px] leading-relaxed text-red-350">
+              {errorMsg}
+            </p>
+            {errorMsg.toLowerCase().includes("failed to fetch") && (
+              <div className="text-[10px] bg-black/40 p-2.5 rounded-lg border border-red-500/10 text-slate-300 space-y-1.5 mt-1 font-sans text-left">
+                <span className="font-bold text-amber-405 block text-amber-400">💡 Network Connection Check Needed:</span>
+                <p className="leading-normal text-slate-300">
+                  This error occurs if your domain (<code className="text-gold-accent font-mono">{typeof window !== "undefined" ? window.location.hostname : ""}</code>) has not been added as a <strong>Web Platform</strong> inside your Appwrite console settings.
+                </p>
+                <p className="leading-normal text-slate-400">
+                  To bypass this, you can toggle <strong>Local Sandbox Mode</strong> below to run the app instantly with simulated offline state!
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -248,49 +319,84 @@ export function LoginPage() {
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
-              className="mt-3.5 space-y-3 bg-black/40 p-3 rounded-xl border border-white/5 text-left"
+              className="mt-3.5 space-y-3 bg-black/40 p-3.5 rounded-xl border border-white/5 text-left"
             >
               <div className="flex items-center gap-1 text-[10px] font-bold text-slate-300 font-mono uppercase tracking-wide">
-                <Database className="w-3 h-3 text-gold-accent" /> Appwrite Configuration
+                <Database className="w-3.5 h-3.5 text-gold-accent" /> Connection Setup
               </div>
-              <p className="text-[9px] text-slate-400 leading-normal">
-                If you receive a <strong>"Failed to fetch"</strong> error, make sure your domain (<code className="text-gold-accent">{typeof window !== "undefined" ? window.location.hostname : "your-domain"}</code>) is added as a <strong>Web Platform</strong> inside your Appwrite Project settings.
-              </p>
 
-              <div className="space-y-2 text-[10px]">
-                <div>
-                  <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1">API Endpoint</label>
-                  <input
-                    type="text"
-                    value={customEndpoint}
-                    onChange={(e) => setCustomEndpoint(e.target.value)}
-                    placeholder="https://cloud.appwrite.io/v1"
-                    className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1">Project ID</label>
-                  <input
-                    type="text"
-                    value={customProjectId}
-                    onChange={(e) => setCustomProjectId(e.target.value)}
-                    placeholder="Enter Appwrite Project ID"
-                    className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1 text-slate-400">Database ID</label>
-                  <input
-                    type="text"
-                    value={customDatabaseId}
-                    onChange={(e) => setCustomDatabaseId(e.target.value)}
-                    placeholder="default"
-                    className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
-                  />
-                </div>
+              {/* Toggle offline vs cloud */}
+              <div className="grid grid-cols-2 gap-2 bg-slate-900/60 p-1 rounded-lg border border-white/5 text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => setUseMock(true)}
+                  className={`py-1.5 rounded-md font-bold uppercase transition-all tracking-wider ${
+                    useMock
+                      ? "bg-amber-500/15 text-amber-400 border border-amber-500/25"
+                      : "text-slate-400 hover:text-slate-200 border border-transparent font-medium"
+                  }`}
+                >
+                  Local Sandbox
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUseMock(false)}
+                  className={`py-1.5 rounded-md font-bold uppercase transition-all tracking-wider ${
+                    !useMock
+                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
+                      : "text-slate-400 hover:text-slate-200 border border-transparent font-medium"
+                  }`}
+                >
+                  Cloud Mode (Real API)
+                </button>
               </div>
+
+              {useMock ? (
+                <div className="text-[10px] space-y-1.5 text-slate-300 bg-amber-500/5 p-2.5 rounded-lg border border-amber-500/10 leading-normal">
+                  <span className="font-bold text-amber-400 uppercase tracking-wide text-[9px] block">⚠️ Sandbox mode active</span>
+                  <p>
+                    All database queries and user accounts will operate on simulated storage locally in your browser. This bypasses Appwrite cloud access entirely! No custom setup or permissions are needed.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 text-[10px]">
+                  <p className="text-[9px] text-slate-400 leading-normal bg-black/20 p-2 rounded-lg border border-white/5">
+                    Enter your Appwrite Project ID and Endpoint. Don't forget to add <code className="text-gold-accent font-mono">{typeof window !== "undefined" ? window.location.hostname : ""}</code> as a <strong>Web Platform</strong> inside your Appwrite console settings!
+                  </p>
+                  <div>
+                    <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1">API Endpoint</label>
+                    <input
+                      type="text"
+                      value={customEndpoint}
+                      onChange={(e) => setCustomEndpoint(e.target.value)}
+                      placeholder="https://cloud.appwrite.io/v1"
+                      className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1 font-bold">Project ID</label>
+                    <input
+                      type="text"
+                      value={customProjectId}
+                      onChange={(e) => setCustomProjectId(e.target.value)}
+                      placeholder="Enter Appwrite Project ID"
+                      className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1">Database ID</label>
+                    <input
+                      type="text"
+                      value={customDatabaseId}
+                      onChange={(e) => setCustomDatabaseId(e.target.value)}
+                      placeholder="default"
+                      className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2 pt-1.5">
                 <button
@@ -298,8 +404,9 @@ export function LoginPage() {
                   onClick={() => {
                     saveAppwriteOverride({
                       endpoint: customEndpoint,
-                      projectId: customProjectId,
-                      databaseId: customDatabaseId
+                      projectId: useMock ? "" : customProjectId,
+                      databaseId: customDatabaseId,
+                      useMock: useMock
                     });
                   }}
                   className="flex-1 py-1.5 rounded-lg bg-gold-accent text-slate-950 text-[10px] font-bold uppercase tracking-wider text-center hover:opacity-90"
@@ -311,7 +418,7 @@ export function LoginPage() {
                   onClick={() => {
                     clearAppwriteOverride();
                   }}
-                  className="px-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-slate-300 text-[10px] font-medium hover:bg-white/10"
+                  className="px-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-slate-300 text-[10px] font-bold uppercase tracking-wider hover:bg-white/10"
                 >
                   Reset Defaults
                 </button>
