@@ -275,6 +275,12 @@ export function LoginPage() {
                   </>
                 )}
               </button>
+
+              <div className="text-center">
+                <span className="inline-block text-[9px] text-[#A6ACAF] font-sans leading-normal px-2 py-1 bg-white/5 rounded-lg border border-white/5">
+                  🛡️ <strong>By-All-Means Login active</strong>: If cloud endpoints fail or CORS is unauthorized, you will be authenticated into a live <strong>Offline Sandbox</strong> instantly.
+                </span>
+              </div>
             </form>
 
           </>
@@ -640,6 +646,12 @@ export function RegisterPage() {
               </>
             )}
           </button>
+
+          <div className="text-center mt-3">
+            <span className="inline-block text-[9px] text-[#A6ACAF] font-sans leading-normal px-2 py-1 bg-white/5 rounded-lg border border-white/5">
+              🛡️ <strong>Automated signup fallback</strong>: If cloud connection CORS is blocked, your account is immediately registered in a high-speed <strong>Offline Sandbox</strong> instantly.
+            </span>
+          </div>
         </form>
 
         <p className="text-center text-[11px] text-slate-440 mt-5">

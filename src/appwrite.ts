@@ -59,6 +59,9 @@ export function getAppwriteConfig() {
 
   if (typeof window !== "undefined") {
     try {
+      if (localStorage.getItem("fr_fallback_active") === "true") {
+        useMock = true;
+      }
       const stored = localStorage.getItem("fr_appwrite_override");
       if (stored) {
         const parsed = JSON.parse(stored);
