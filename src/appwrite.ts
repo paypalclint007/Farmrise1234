@@ -7,11 +7,50 @@ export const isMockAppwrite = !metaEnv.VITE_APPWRITE_PROJECT_ID;
 
 export const client = new Client();
 
-// Point client requests through our' server proxy to avoid CORS/Sandbox issues with Appwrite Cloud
-const endpoint = (typeof window !== "undefined")
+// Detect whether we are running inside the AI Studio development/preview server.
+// In development, we route Appwrite requests through our node proxy at `/api/appwrite`
+// to automatically bypass standard browser iframe CORS and sandbox restrictions.
+// When deployed/published to production (such as on Appwrite static hosting at `farmriseinvest.appwrite.network`),
+// we connect DIRECTLY to the real Appwrite cloud API because there is no node proxy backend running.
+const isDevPreview = typeof window !== "undefined" && (
+  window.location.hostname.includes("run.app") || 
+  window.location.hostname.includes("localhost") || 
+  window.location.hostname.includes("127.0.0.1") ||
+  window.location.hostname.includes("gitpod.io") ||
+  window.location.hostname.includes("webcontainer.io")
+);
+
+const endpoint = (typeof window !== "undefined" && isDevPreview)
   ? `${window.location.origin}/api/appwrite`
   : (metaEnv.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1");
+
 const projectId = metaEnv.VITE_APPWRITE_PROJECT_ID || "";
+
+// Perform comprehensive initialization validation logging
+if (typeof window !== "undefined") {
+  console.group("%c📊 Appwrite Connection Diagnostics", "color: #00E676; font-weight: bold; font-size: 11px;");
+  console.log(`%cEnvironment Mode: %c${isMockAppwrite ? "OFFLINE SANDBOX MODE" : "CONNECTED CLOUD"}`, "color: #94A3B8;", isMockAppwrite ? "color: #F5B300; font-weight: bold;" : "color: #00E676; font-weight: bold;");
+  console.log(`%cEndpoint Routing: %c${endpoint}`, "color: #94A3B8;", "color: #E2E8F0; font-family: monospace;");
+  console.log(`%cProject ID:       %c${projectId ? projectId : "NOT CONFIGURED (FALLING BACK TO LOCAL STORAGE)"}`, "color: #94A3B8;", projectId ? "color: #E2E8F0; font-family: monospace;" : "color: #EF4444; font-weight: bold;");
+  if (!isMockAppwrite) {
+    console.log(`%cDatabase ID:     %c${metaEnv.VITE_APPWRITE_DATABASE_ID || "default"}`, "color: #94A3B8;", "color: #00E676; font-family: monospace;");
+    console.log(`%cCollections Checklist:`, "color: #94A3B8; font-weight: bold;");
+    const collections = {
+      users: metaEnv.VITE_APPWRITE_USERS_COLLECTION_ID || "users (default)",
+      plans: metaEnv.VITE_APPWRITE_PLANS_COLLECTION_ID || "investmentPlans (default)",
+      deposits: metaEnv.VITE_APPWRITE_DEPOSITS_COLLECTION_ID || "deposits (default)",
+      investments: metaEnv.VITE_APPWRITE_INVESTMENTS_COLLECTION_ID || "investments (default)",
+      withdrawals: metaEnv.VITE_APPWRITE_WITHDRAWALS_COLLECTION_ID || "withdrawals (default)",
+      notifications: metaEnv.VITE_APPWRITE_NOTIFICATIONS_COLLECTION_ID || "notifications (default)",
+      farmUpdates: metaEnv.VITE_APPWRITE_FARM_UPDATES_COLLECTION_ID || "farmUpdates (default)",
+      referrals: metaEnv.VITE_APPWRITE_REFERRALS_COLLECTION_ID || "referrals (default)"
+    };
+    Object.entries(collections).forEach(([key, value]) => {
+      console.log(`   • ${key.padEnd(14)} -> ${value}`);
+    });
+  }
+  console.groupEnd();
+}
 
 if (!isMockAppwrite) {
   client.setEndpoint(endpoint).setProject(projectId);
