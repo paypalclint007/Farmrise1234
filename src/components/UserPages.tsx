@@ -517,7 +517,7 @@ function DepositView() {
   const [submitted, setSubmitted] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText("1234567890");
+    navigator.clipboard.writeText("9907817696");
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -658,16 +658,16 @@ function DepositView() {
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-slate-400 font-mono text-[11px]">Bank Name:</span>
-              <span className="text-white font-extrabold text-sm">Moniepoint</span>
+              <span className="text-white font-extrabold text-sm">indulge MFB</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-slate-400 font-mono text-[11px]">Account Name:</span>
-              <span className="text-white font-bold">FarmRise Ventures</span>
+              <span className="text-white font-bold">More4less Farmrise FLW</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-slate-400 font-mono text-[11px]">Account Number:</span>
               <div className="flex items-center gap-1.5">
-                <span className="text-gold-accent font-black tracking-widest text-sm font-mono">1234567890</span>
+                <span className="text-gold-accent font-black tracking-widest text-sm font-mono">9907817696</span>
                 <button
                   type="button"
                   onClick={handleCopy}
