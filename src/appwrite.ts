@@ -3,22 +3,10 @@ import { Client, Account, Databases, Query } from "appwrite";
 const metaEnv = (import.meta as any).env || {};
 
 // Check if we are using local storage mock fallback (when Appwrite Credentials are not set in the environment)
-export const isMockAppwrite = !metaEnv.VITE_APPWRITE_PROJECT_ID;
+const initialConfig = getAppwriteConfig();
+export const isMockAppwrite = initialConfig.isMockAppwrite;
 
 export const client = new Client();
-
-// Detect whether we are running inside the AI Studio development/preview server.
-// In development, we route Appwrite requests through our node proxy at `/api/appwrite`
-// to automatically bypass standard browser iframe CORS and sandbox restrictions.
-// When deployed/published to production (such as on Appwrite static hosting at `farmriseinvest.appwrite.network`),
-// we connect DIRECTLY to the real Appwrite cloud API because there is no node proxy backend running.
-const isDevPreview = typeof window !== "undefined" && (
-  window.location.hostname.includes("run.app") || 
-  window.location.hostname.includes("localhost") || 
-  window.location.hostname.includes("127.0.0.1") ||
-  window.location.hostname.includes("gitpod.io") ||
-  window.location.hostname.includes("webcontainer.io")
-);
 
 export function formatAppwriteEndpoint(raw: string): string {
   if (!raw) return "https://cloud.appwrite.io/v1";
@@ -38,14 +26,87 @@ export function formatAppwriteEndpoint(raw: string): string {
   return url;
 }
 
-const configuredRawEndpoint = metaEnv.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1";
-const cleanedConfiguredEndpoint = formatAppwriteEndpoint(configuredRawEndpoint);
+export function getAppwriteConfig() {
+  const env = (import.meta as any).env || {};
+  
+  let endpoint = "https://cloud.appwrite.io/v1";
+  let projectId = env.VITE_APPWRITE_PROJECT_ID || "";
+  let databaseId = env.VITE_APPWRITE_DATABASE_ID || "default";
+  let collections = {
+    users: env.VITE_APPWRITE_USERS_COLLECTION_ID || "users",
+    plans: env.VITE_APPWRITE_PLANS_COLLECTION_ID || "investmentPlans",
+    deposits: env.VITE_APPWRITE_DEPOSITS_COLLECTION_ID || "deposits",
+    investments: env.VITE_APPWRITE_INVESTMENTS_COLLECTION_ID || "investments",
+    withdrawals: env.VITE_APPWRITE_WITHDRAWALS_COLLECTION_ID || "withdrawals",
+    notifications: env.VITE_APPWRITE_NOTIFICATIONS_COLLECTION_ID || "notifications",
+    farmUpdates: env.VITE_APPWRITE_FARM_UPDATES_COLLECTION_ID || "farmUpdates",
+    referrals: env.VITE_APPWRITE_REFERRALS_COLLECTION_ID || "referrals",
+  };
 
-const endpoint = (typeof window !== "undefined" && isDevPreview)
-  ? `${window.location.origin}/api/appwrite`
-  : cleanedConfiguredEndpoint;
+  const isDevPreview = typeof window !== "undefined" && (
+    window.location.hostname.includes("run.app") || 
+    window.location.hostname.includes("localhost") || 
+    window.location.hostname.includes("127.0.0.1") ||
+    window.location.hostname.includes("gitpod.io") ||
+    window.location.hostname.includes("webcontainer.io")
+  );
 
-const projectId = metaEnv.VITE_APPWRITE_PROJECT_ID || "";
+  const rawEndpoint = env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1";
+  const cleanedEndpoint = formatAppwriteEndpoint(rawEndpoint);
+  endpoint = isDevPreview ? `${window.location.origin}/api/appwrite` : cleanedEndpoint;
+
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("fr_appwrite_override");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.endpoint) endpoint = formatAppwriteEndpoint(parsed.endpoint);
+        if (parsed.projectId) projectId = parsed.projectId;
+        if (parsed.databaseId) databaseId = parsed.databaseId;
+        if (parsed.collections) {
+          collections = { ...collections, ...parsed.collections };
+        }
+      }
+    } catch (e) {
+      console.error("Error parsing local Appwrite override", e);
+    }
+  }
+
+  return {
+    isMockAppwrite: !projectId,
+    endpoint,
+    projectId,
+    databaseId,
+    collections,
+  };
+}
+
+const endpoint = initialConfig.endpoint;
+const projectId = initialConfig.projectId;
+
+export const APPWRITE_CONFIG = {
+  databaseId: initialConfig.databaseId,
+  collections: initialConfig.collections
+};
+
+export function saveAppwriteOverride(cfg: {
+  endpoint: string;
+  projectId: string;
+  databaseId: string;
+  collections?: Partial<typeof APPWRITE_CONFIG.collections>;
+}) {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("fr_appwrite_override", JSON.stringify(cfg));
+    window.location.reload();
+  }
+}
+
+export function clearAppwriteOverride() {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("fr_appwrite_override");
+    window.location.reload();
+  }
+}
 
 // Perform comprehensive initialization validation logging
 if (typeof window !== "undefined") {
@@ -54,19 +115,9 @@ if (typeof window !== "undefined") {
   console.log(`%cEndpoint Routing: %c${endpoint}`, "color: #94A3B8;", "color: #E2E8F0; font-family: monospace;");
   console.log(`%cProject ID:       %c${projectId ? projectId : "NOT CONFIGURED (FALLING BACK TO LOCAL STORAGE)"}`, "color: #94A3B8;", projectId ? "color: #E2E8F0; font-family: monospace;" : "color: #EF4444; font-weight: bold;");
   if (!isMockAppwrite) {
-    console.log(`%cDatabase ID:     %c${metaEnv.VITE_APPWRITE_DATABASE_ID || "default"}`, "color: #94A3B8;", "color: #00E676; font-family: monospace;");
+    console.log(`%cDatabase ID:     %c${APPWRITE_CONFIG.databaseId}`, "color: #94A3B8;", "color: #00E676; font-family: monospace;");
     console.log(`%cCollections Checklist:`, "color: #94A3B8; font-weight: bold;");
-    const collections = {
-      users: metaEnv.VITE_APPWRITE_USERS_COLLECTION_ID || "users (default)",
-      plans: metaEnv.VITE_APPWRITE_PLANS_COLLECTION_ID || "investmentPlans (default)",
-      deposits: metaEnv.VITE_APPWRITE_DEPOSITS_COLLECTION_ID || "deposits (default)",
-      investments: metaEnv.VITE_APPWRITE_INVESTMENTS_COLLECTION_ID || "investments (default)",
-      withdrawals: metaEnv.VITE_APPWRITE_WITHDRAWALS_COLLECTION_ID || "withdrawals (default)",
-      notifications: metaEnv.VITE_APPWRITE_NOTIFICATIONS_COLLECTION_ID || "notifications (default)",
-      farmUpdates: metaEnv.VITE_APPWRITE_FARM_UPDATES_COLLECTION_ID || "farmUpdates (default)",
-      referrals: metaEnv.VITE_APPWRITE_REFERRALS_COLLECTION_ID || "referrals (default)"
-    };
-    Object.entries(collections).forEach(([key, value]) => {
+    Object.entries(APPWRITE_CONFIG.collections).forEach(([key, value]) => {
       console.log(`   • ${key.padEnd(14)} -> ${value}`);
     });
   }
@@ -372,21 +423,6 @@ databases.listDocuments = (async (databaseIdOrParams: any, collectionId?: string
   }
   return res;
 }) as any;
-
-// Appwrite schema mapping constants
-export const APPWRITE_CONFIG = {
-  databaseId: metaEnv.VITE_APPWRITE_DATABASE_ID || "default",
-  collections: {
-    users: metaEnv.VITE_APPWRITE_USERS_COLLECTION_ID || "users",
-    plans: metaEnv.VITE_APPWRITE_PLANS_COLLECTION_ID || "investmentPlans",
-    deposits: metaEnv.VITE_APPWRITE_DEPOSITS_COLLECTION_ID || "deposits",
-    investments: metaEnv.VITE_APPWRITE_INVESTMENTS_COLLECTION_ID || "investments",
-    withdrawals: metaEnv.VITE_APPWRITE_WITHDRAWALS_COLLECTION_ID || "withdrawals",
-    notifications: metaEnv.VITE_APPWRITE_NOTIFICATIONS_COLLECTION_ID || "notifications",
-    farmUpdates: metaEnv.VITE_APPWRITE_FARM_UPDATES_COLLECTION_ID || "farmUpdates",
-    referrals: metaEnv.VITE_APPWRITE_REFERRALS_COLLECTION_ID || "referrals",
-  }
-};
 
 export enum OperationType {
   CREATE = "create",

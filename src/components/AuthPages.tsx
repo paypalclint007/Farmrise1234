@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useFarm } from "../context/FarmContext";
-import { LogIn, UserPlus, Shield, Sparkles, RefreshCw } from "lucide-react";
+import { LogIn, UserPlus, Shield, Sparkles, RefreshCw, Settings, Database, Sliders, Check, HelpCircle } from "lucide-react";
 import { motion } from "motion/react";
+import { getAppwriteConfig, saveAppwriteOverride, clearAppwriteOverride } from "../appwrite";
 
 export function SplashScreen() {
   const { navigate } = useFarm();
@@ -56,6 +57,12 @@ export function LoginPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [viewState, setViewState] = useState<"login" | "forgot">("login");
+
+  const initialCfg = getAppwriteConfig();
+  const [showSettings, setShowSettings] = useState(false);
+  const [customEndpoint, setCustomEndpoint] = useState(initialCfg.endpoint);
+  const [customProjectId, setCustomProjectId] = useState(initialCfg.projectId);
+  const [customDatabaseId, setCustomDatabaseId] = useState(initialCfg.databaseId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,6 +232,93 @@ export function LoginPage() {
             Register Account
           </button>
         </p>
+
+        {/* Dynamic Appwrite Settings Override */}
+        <div className="mt-6 pt-4 border-t border-white/5">
+          <button
+            type="button"
+            onClick={() => setShowSettings(!showSettings)}
+            className="w-full flex items-center justify-center gap-1.5 text-[10px] font-mono text-slate-400 hover:text-gold-accent transition-colors"
+          >
+            <Settings className={`w-3 h-3 ${showSettings ? "animate-spin text-gold-accent" : ""}`} />
+            {showSettings ? "Hide Connection Settings" : "Configure Appwrite Connection"}
+          </button>
+
+          {showSettings && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              className="mt-3.5 space-y-3 bg-black/40 p-3 rounded-xl border border-white/5 text-left"
+            >
+              <div className="flex items-center gap-1 text-[10px] font-bold text-slate-300 font-mono uppercase tracking-wide">
+                <Database className="w-3 h-3 text-gold-accent" /> Appwrite Configuration
+              </div>
+              <p className="text-[9px] text-slate-400 leading-normal">
+                If you receive a <strong>"Failed to fetch"</strong> error, make sure your domain (<code className="text-gold-accent">{typeof window !== "undefined" ? window.location.hostname : "your-domain"}</code>) is added as a <strong>Web Platform</strong> inside your Appwrite Project settings.
+              </p>
+
+              <div className="space-y-2 text-[10px]">
+                <div>
+                  <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1">API Endpoint</label>
+                  <input
+                    type="text"
+                    value={customEndpoint}
+                    onChange={(e) => setCustomEndpoint(e.target.value)}
+                    placeholder="https://cloud.appwrite.io/v1"
+                    className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1">Project ID</label>
+                  <input
+                    type="text"
+                    value={customProjectId}
+                    onChange={(e) => setCustomProjectId(e.target.value)}
+                    placeholder="Enter Appwrite Project ID"
+                    className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1 text-slate-400">Database ID</label>
+                  <input
+                    type="text"
+                    value={customDatabaseId}
+                    onChange={(e) => setCustomDatabaseId(e.target.value)}
+                    placeholder="default"
+                    className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    saveAppwriteOverride({
+                      endpoint: customEndpoint,
+                      projectId: customProjectId,
+                      databaseId: customDatabaseId
+                    });
+                  }}
+                  className="flex-1 py-1.5 rounded-lg bg-gold-accent text-slate-950 text-[10px] font-bold uppercase tracking-wider text-center hover:opacity-90"
+                >
+                  Save & Reload
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearAppwriteOverride();
+                  }}
+                  className="px-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-slate-300 text-[10px] font-medium hover:bg-white/10"
+                >
+                  Reset Defaults
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </div>
       </motion.div>
     </div>
   );
