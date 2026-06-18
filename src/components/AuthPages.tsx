@@ -120,6 +120,24 @@ export function LoginPage() {
           </p>
         </div>
 
+        {viewState === "login" && (
+          <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 mb-5 select-none">
+            <button
+              type="button"
+              className="flex-1 py-2 text-xs font-semibold rounded-lg bg-gold-accent text-slate-950 shadow-sm transition-all text-center cursor-pointer font-sans"
+            >
+              Sign In / Login
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("register")}
+              className="flex-1 py-2 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition-all text-center cursor-pointer font-sans"
+            >
+              Sign Up / Register
+            </button>
+          </div>
+        )}
+
         {connectionError && (
           <div className="bg-amber-500/10 border border-amber-500/25 p-3.5 rounded-2xl text-xs mb-4 space-y-2.5 text-left">
             <div className="flex items-center justify-between">
@@ -522,6 +540,22 @@ export function RegisterPage() {
           </div>
           <h2 className="text-xl font-bold font-display text-white">Join FarmRise</h2>
           <p className="text-xs text-slate-400 mt-1">Begin sponsoring premium livestock contracts</p>
+        </div>
+
+        <div className="flex bg-white/5 p-1 rounded-xl border border-white/5 mb-5 select-none">
+          <button
+            type="button"
+            onClick={() => navigate("login")}
+            className="flex-1 py-2 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition-all text-center cursor-pointer font-sans"
+          >
+            Sign In / Login
+          </button>
+          <button
+            type="button"
+            className="flex-1 py-2 text-xs font-semibold rounded-lg bg-green-accent text-slate-950 shadow-sm transition-all text-center cursor-pointer font-sans"
+          >
+            Sign Up / Register
+          </button>
         </div>
 
         {connectionError && (

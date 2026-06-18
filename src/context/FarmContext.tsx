@@ -430,13 +430,24 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentPage(initialPage);
       }
     } catch (err: any) {
-      console.error("Appwrite connection check or authentication failure:", err);
-      const isNetworkError = err.message?.toLowerCase().includes("failed to fetch") || 
+      const isGuestError = err.code === 401 || 
+        err.message?.toLowerCase().includes("guests") || 
+        err.message?.toLowerCase().includes("missing scopes") || 
+        err.message?.toLowerCase().includes("unauthorized");
+
+      if (isGuestError) {
+        console.log("No active Appwrite session (user is guest). Re-routing to entry page.");
+      } else {
+        console.error("Appwrite connection check or authentication failure:", err);
+      }
+      const isNetworkError = !isGuestError && (
+        err.message?.toLowerCase().includes("failed to fetch") || 
         err.name === "TypeError" || 
         err.code === 0 || 
         err.status === 0 || 
         err.message?.toLowerCase().includes("network") ||
-        err.message?.toLowerCase().includes("cors");
+        err.message?.toLowerCase().includes("cors")
+      );
 
       if (isNetworkError) {
         setConnectionError(err.message || "Failed to establish secure Appwrite connection.");
