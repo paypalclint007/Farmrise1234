@@ -419,7 +419,15 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentPage("dashboard");
       } else {
         setCurrentUser(null);
-        setCurrentPage("login");
+        let initialPage = "login";
+        if (typeof window !== "undefined") {
+          const params = new URLSearchParams(window.location.search);
+          const hasRef = params.get("ref") || params.get("referredCode") || params.get("code");
+          if (hasRef) {
+            initialPage = "register";
+          }
+        }
+        setCurrentPage(initialPage);
       }
     } catch (err: any) {
       console.error("Appwrite connection check or authentication failure:", err);
@@ -436,7 +444,15 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setConnectionError(null);
       }
       setCurrentUser(null);
-      setCurrentPage("login");
+      let initialPage = "login";
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const hasRef = params.get("ref") || params.get("referredCode") || params.get("code");
+        if (hasRef) {
+          initialPage = "register";
+        }
+      }
+      setCurrentPage(initialPage);
     } finally {
       setLoading(false);
     }
@@ -486,7 +502,15 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (storedUser) {
           setCurrentPage("dashboard");
         } else {
-          setCurrentPage("login");
+          let initialPage = "login";
+          if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            const hasRef = params.get("ref") || params.get("referredCode") || params.get("code");
+            if (hasRef) {
+              initialPage = "register";
+            }
+          }
+          setCurrentPage(initialPage);
         }
       }, 1500);
     } else {
