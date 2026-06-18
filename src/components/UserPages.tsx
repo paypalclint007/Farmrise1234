@@ -1955,6 +1955,19 @@ function ProfileView() {
   const [checkingAppwrite, setCheckingAppwrite] = useState(false);
   const [appwriteFeedback, setAppwriteFeedback] = useState<string | null>(null);
 
+  const [hasFallbackActive, setHasFallbackActive] = useState(() => {
+    return typeof window !== "undefined" && localStorage.getItem("fr_fallback_active") === "true";
+  });
+
+  const handleClearFallback = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("fr_fallback_active");
+      localStorage.removeItem("fr_current_user"); // Purge mock user to force fresh real DB authentication page
+      alert("Local sandbox mode cleared! The page will reload so you can login or register directly against the cloud Appwrite database.");
+      window.location.reload();
+    }
+  };
+
   const handleTestGoldRef = () => {
     quickAddFunds(1000);
     alert("Test audit seed: Added +₦1,000 back to your wallet ledger! Play and test sponsorships.");
@@ -1995,6 +2008,29 @@ function ProfileView() {
       </div>
 
       <ProfileSubTabs active="profile" />
+
+      {/* Local Sandbox Fallback active warning for regular users */}
+      {hasFallbackActive && (
+        <div className="glass-panel p-5 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-3">
+          <div className="flex items-start gap-2.5">
+            <span className="text-xl">⚠️</span>
+            <div className="space-y-1">
+              <h4 className="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider">
+                Local Sandbox Offline Mode Active
+              </h4>
+              <p className="text-[10px] text-slate-300 leading-normal">
+                Your browser fell back to simulated local database mode because of a database connection or credentials check issue. Changes made currently will not synchronize with the live admin cloud dashboard.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleClearFallback}
+            className="w-full py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:opacity-95 text-slate-950 font-bold uppercase tracking-wider rounded-xl text-[10px] active:scale-[0.99] transition-all"
+          >
+            Clear Local Mode & Connect Cloud DB
+          </button>
+        </div>
+      )}
 
       <div className="glass-panel rounded-2xl p-5 text-center space-y-3 relative overflow-hidden">
         {/* Background circle */}

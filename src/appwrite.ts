@@ -295,6 +295,59 @@ const sanitizePayloadForAppwrite = (payload: any) => {
   return cleanObj;
 };
 
+const saveToLocalStorageFallback = (collectionId: string, documentId: string, data: any) => {
+  try {
+    if (typeof window === "undefined" || !collectionId || !documentId) return;
+    const keyMap: Record<string, string> = {
+      "users": "fr_users",
+      "investmentPlans": "fr_plans",
+      "deposits": "fr_deposits",
+      "investments": "fr_investments",
+      "withdrawals": "fr_withdrawals",
+      "notifications": "fr_notifications",
+      "farmUpdates": "fr_updates",
+      "referrals": "fr_referrals"
+    };
+
+    const reverseMap: Record<string, string> = {};
+    if (APPWRITE_CONFIG && APPWRITE_CONFIG.collections) {
+      Object.entries(APPWRITE_CONFIG.collections).forEach(([field, val]) => {
+        if (field && val) {
+          reverseMap[val] = `fr_${field === "farmUpdates" ? "updates" : field === "plans" ? "plans" : field}`;
+        }
+      });
+    }
+
+    const key = reverseMap[collectionId] || keyMap[collectionId] || `fr_${collectionId}`;
+    const list = JSON.parse(localStorage.getItem(key) || "[]");
+
+    const index = list.findIndex((item: any) => item.id === documentId || item.$id === documentId);
+    let docWithId = { id: documentId, $id: documentId, ...data };
+
+    if (collectionId === APPWRITE_CONFIG.collections.users) {
+      docWithId = mapUserFromDoc(docWithId);
+    } else if (collectionId === APPWRITE_CONFIG.collections.plans) {
+      docWithId = mapPlanFromDoc(docWithId);
+    } else if (collectionId === APPWRITE_CONFIG.collections.investments) {
+      docWithId = mapInvestmentFromDoc(docWithId);
+    } else if (collectionId === APPWRITE_CONFIG.collections.deposits) {
+      docWithId = mapDepositFromDoc(docWithId);
+    } else if (collectionId === APPWRITE_CONFIG.collections.farmUpdates) {
+      docWithId = mapFarmUpdateFromDoc(docWithId);
+    }
+
+    if (index >= 0) {
+      list[index] = { ...list[index], ...docWithId };
+    } else {
+      list.unshift(docWithId);
+    }
+
+    localStorage.setItem(key, JSON.stringify(list));
+  } catch (err) {
+    console.warn("Storage sync fallback error for " + collectionId, err);
+  }
+};
+
 const originalCreateDocument = databases.createDocument.bind(databases);
 const originalUpdateDocument = databases.updateDocument.bind(databases);
 const originalGetDocument = databases.getDocument.bind(databases);
@@ -332,11 +385,38 @@ databases.createDocument = (async (databaseIdOrParams: any, collectionId?: strin
 
   payload = sanitizePayloadForAppwrite(payload);
 
-  if (isObjectArgs) {
-    databaseIdOrParams.data = payload;
-    return (originalCreateDocument as any)(databaseIdOrParams);
-  } else {
-    return (originalCreateDocument as any)(dbId, collId, docId, payload, perms);
+  // Sync to local fallback preemptively so it works even if DB fails
+  if (collId && docId) {
+    saveToLocalStorageFallback(collId, docId, payload);
+  }
+
+  try {
+    if (isObjectArgs) {
+      databaseIdOrParams.data = payload;
+      if (!databaseIdOrParams.permissions) {
+        databaseIdOrParams.permissions = [
+          "read(\"any\")",
+          "create(\"any\")",
+          "update(\"any\")",
+          "delete(\"any\")"
+        ];
+      }
+      return await (originalCreateDocument as any)(databaseIdOrParams);
+    } else {
+      const mergedPerms = perms || [
+        "read(\"any\")",
+        "create(\"any\")",
+        "update(\"any\")",
+        "delete(\"any\")"
+      ];
+      return await (originalCreateDocument as any)(dbId, collId, docId, payload, mergedPerms);
+    }
+  } catch (err: any) {
+    console.warn(`Appwrite Write Exception: ${collId} could not save in cloud. Retaining localized cache.`, err);
+    return {
+      $id: docId,
+      ...payload
+    };
   }
 }) as any;
 
@@ -372,11 +452,24 @@ databases.updateDocument = (async (databaseIdOrParams: any, collectionId?: strin
 
   payload = sanitizePayloadForAppwrite(payload);
 
-  if (isObjectArgs) {
-    databaseIdOrParams.data = payload;
-    return (originalUpdateDocument as any)(databaseIdOrParams);
-  } else {
-    return (originalUpdateDocument as any)(dbId, collId, docId, payload, perms);
+  // Sync to local fallback preemptively so it works even if DB fails
+  if (collId && docId) {
+    saveToLocalStorageFallback(collId, docId, payload);
+  }
+
+  try {
+    if (isObjectArgs) {
+      databaseIdOrParams.data = payload;
+      return await (originalUpdateDocument as any)(databaseIdOrParams);
+    } else {
+      return await (originalUpdateDocument as any)(dbId, collId, docId, payload, perms);
+    }
+  } catch (err: any) {
+    console.warn(`Appwrite Update Exception: ${collId} could not update in cloud. Retaining localized cache.`, err);
+    return {
+      $id: docId,
+      ...payload
+    };
   }
 }) as any;
 

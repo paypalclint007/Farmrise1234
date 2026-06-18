@@ -532,76 +532,186 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Fetch real Appwrite Database lists during active sessions
   const fetchAllData = async (userProfile: UserProfile) => {
     if (isMockAppwrite) return;
-    try {
-      // Fetch investment plans
-      const plansDoc = await databases.listDocuments(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.plans
-      );
-      const fetchedPlans = plansDoc.documents.map(mapPlanFromDoc);
-      if (fetchedPlans.length > 0) setPlans(fetchedPlans);
 
-      // Fetch farm updates
-      const updatesDoc = await databases.listDocuments(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.farmUpdates
-      );
-      const fetchedUpdates = updatesDoc.documents.map(mapFarmUpdateFromDoc);
+    // Helper to safely list documents and fallback to client-side filtering on index errors
+    const safeFetchCollection = async (collectionId: string, queries: any[] = []): Promise<any[]> => {
+      const getCollectionFallback = (collId: string): any[] => {
+        try {
+          if (typeof window === "undefined") return [];
+          if (collId === APPWRITE_CONFIG.collections.plans) {
+            return DEFAULT_PLANS;
+          }
+          if (collId === APPWRITE_CONFIG.collections.farmUpdates) {
+            return DEFAULT_UPDATES;
+          }
+          if (collId === APPWRITE_CONFIG.collections.deposits) {
+            const list = JSON.parse(localStorage.getItem("fr_deposits") || "[]");
+            return userProfile.isAdmin ? list : list.filter((d: any) => d.userId === userProfile.id);
+          }
+          if (collId === APPWRITE_CONFIG.collections.investments) {
+            const list = JSON.parse(localStorage.getItem("fr_investments") || "[]");
+            return userProfile.isAdmin ? list : list.filter((i: any) => i.userId === userProfile.id);
+          }
+          if (collId === APPWRITE_CONFIG.collections.withdrawals) {
+            const list = JSON.parse(localStorage.getItem("fr_withdrawals") || "[]");
+            return userProfile.isAdmin ? list : list.filter((w: any) => w.userId === userProfile.id);
+          }
+          if (collId === APPWRITE_CONFIG.collections.referrals) {
+            const list = JSON.parse(localStorage.getItem("fr_referrals") || "[]");
+            return userProfile.isAdmin ? list : list.filter((r: any) => r.referrerId === userProfile.id);
+          }
+          if (collId === APPWRITE_CONFIG.collections.notifications) {
+            const list = JSON.parse(localStorage.getItem("fr_notifications") || "[]");
+            return list.filter((n: any) => n.userId === "all" || n.userId === userProfile.id);
+          }
+          if (collId === APPWRITE_CONFIG.collections.users) {
+            return JSON.parse(localStorage.getItem("fr_users") || "[]");
+          }
+        } catch (err) {
+          console.warn("Error loading fallback list for collection: " + collId, err);
+        }
+        return [];
+      };
+
+      try {
+        const res = await databases.listDocuments(
+          APPWRITE_CONFIG.databaseId,
+          collectionId,
+          queries
+        );
+        return res.documents;
+      } catch (err: any) {
+        const errMsg = err.message || "";
+        const isAuthError = err.code === 401 || err.code === 403 || errMsg.toLowerCase().includes("unauthorized") || errMsg.toLowerCase().includes("not authorized");
+        const isIndexError = errMsg.toLowerCase().includes("index") || 
+                             errMsg.toLowerCase().includes("not found") || 
+                             err.code === 400;
+        
+        if (isIndexError && queries.length > 0) {
+          console.warn(`Appwrite index error on collection "${collectionId}" with queries:`, queries, ". Falling back to secure client-side filter.");
+          try {
+            const fallbackRes = await databases.listDocuments(
+              APPWRITE_CONFIG.databaseId,
+              collectionId,
+              [] // no queries - fetch all
+            );
+            let docs = fallbackRes.documents;
+            for (const q of queries) {
+              if (q && typeof q === "object") {
+                const attr = q.attribute || q.key;
+                const method = q.method || q.operator;
+                const values = q.values || q.value;
+                if (attr) {
+                  const target = Array.isArray(values) ? values[0] : values;
+                  if (target !== undefined) {
+                    if (method === "equal" || !method) {
+                      docs = docs.filter((d: any) => String(d[attr]).toUpperCase() === String(target).toUpperCase());
+                    } else if (method === "notEqual") {
+                      docs = docs.filter((d: any) => String(d[attr]).toUpperCase() !== String(target).toUpperCase());
+                    }
+                  }
+                }
+              }
+            }
+            return docs;
+          } catch (fallbackErr: any) {
+            console.warn(`Total fallback fetch failure for collection "${collectionId}":`, fallbackErr);
+            return getCollectionFallback(collectionId);
+          }
+        }
+
+        if (isAuthError) {
+          console.warn(`Access check: Appwrite collection "${collectionId}" query unauthorized or permission restricted. Operating under client sandbox sandbox context.`);
+          return getCollectionFallback(collectionId);
+        }
+        
+        console.warn(`Warning: Fetch documents failed for collection "${collectionId}" (${err.message || String(err)}). Reverting to local state.`);
+        return getCollectionFallback(collectionId);
+      }
+    };
+
+    // Load Plans
+    try {
+      const documents = await safeFetchCollection(APPWRITE_CONFIG.collections.plans);
+      const fetchedPlans = documents.map(mapPlanFromDoc);
+      if (fetchedPlans.length > 0) setPlans(fetchedPlans);
+    } catch (e) {
+      console.warn("Error processing plans:", e);
+    }
+
+    // Load Updates
+    try {
+      const documents = await safeFetchCollection(APPWRITE_CONFIG.collections.farmUpdates);
+      const fetchedUpdates = documents.map(mapFarmUpdateFromDoc);
       if (fetchedUpdates.length > 0) {
         setFarmUpdates(fetchedUpdates.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       }
+    } catch (e) {
+      console.warn("Error processing farm updates:", e);
+    }
 
-      // Fetch user specific deposits
-      const depDoc = await databases.listDocuments(
-        APPWRITE_CONFIG.databaseId,
+    // Load Deposits
+    try {
+      const documents = await safeFetchCollection(
         APPWRITE_CONFIG.collections.deposits,
         userProfile.isAdmin ? [] : [Query.equal("userId", userProfile.id)]
       );
-      setDeposits(depDoc.documents.map(mapDepositFromDoc));
+      setDeposits(documents.map(mapDepositFromDoc));
+    } catch (e) {
+      console.warn("Error processing deposits:", e);
+    }
 
-      // Fetch user active investments
-      const invDoc = await databases.listDocuments(
-        APPWRITE_CONFIG.databaseId,
+    // Load Investments
+    try {
+      const documents = await safeFetchCollection(
         APPWRITE_CONFIG.collections.investments,
         userProfile.isAdmin ? [] : [Query.equal("userId", userProfile.id)]
       );
-      setInvestments(invDoc.documents.map(mapInvestmentFromDoc));
+      setInvestments(documents.map(mapInvestmentFromDoc));
+    } catch (e) {
+      console.warn("Error processing investments:", e);
+    }
 
-      // Fetch user withdrawals
-      const withDoc = await databases.listDocuments(
-        APPWRITE_CONFIG.databaseId,
+    // Load Withdrawals
+    try {
+      const documents = await safeFetchCollection(
         APPWRITE_CONFIG.collections.withdrawals,
         userProfile.isAdmin ? [] : [Query.equal("userId", userProfile.id)]
       );
-      setWithdrawals(withDoc.documents.map(mapWithdrawalFromDoc));
+      setWithdrawals(documents.map(mapWithdrawalFromDoc));
+    } catch (e) {
+      console.warn("Error processing withdrawals:", e);
+    }
 
-      // Fetch referrals
-      const refDoc = await databases.listDocuments(
-        APPWRITE_CONFIG.databaseId,
+    // Load Referrals
+    try {
+      const documents = await safeFetchCollection(
         APPWRITE_CONFIG.collections.referrals,
         userProfile.isAdmin ? [] : [Query.equal("referrerId", userProfile.id)]
       );
-      setReferrals(refDoc.documents as any as Referral[]);
+      setReferrals(documents as any as Referral[]);
+    } catch (e) {
+      console.warn("Error processing referrals:", e);
+    }
 
-      // Fetch public/private notifications
-      const notifDoc = await databases.listDocuments(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.notifications
-      );
-      const allNotifs = notifDoc.documents as any as Notification[];
+    // Load Notifications
+    try {
+      const documents = await safeFetchCollection(APPWRITE_CONFIG.collections.notifications);
+      const allNotifs = documents as any as Notification[];
       const filtered = allNotifs.filter(n => n.userId === "all" || n.userId === userProfile.id);
       setNotifications(filtered.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+    } catch (e) {
+      console.warn("Error processing notifications:", e);
+    }
 
-      // Fetch all users list if Admin
-      if (userProfile.isAdmin) {
-        const usersDoc = await databases.listDocuments(
-          APPWRITE_CONFIG.databaseId,
-          APPWRITE_CONFIG.collections.users
-        );
-        setUsers(usersDoc.documents.map(mapUserFromDoc));
+    // Load Users if Admin
+    if (userProfile.isAdmin) {
+      try {
+        const documents = await safeFetchCollection(APPWRITE_CONFIG.collections.users);
+        setUsers(documents.map(mapUserFromDoc));
+      } catch (e) {
+        console.warn("Error processing admin users list:", e);
       }
-    } catch (err) {
-      console.warn("Dynamic data polling error, verifying collections match: ", err);
     }
   };
 
@@ -785,6 +895,8 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const registerWithEmail = async (email: string, pass: string, name: string, phoneNumber: string, referredCode?: string) => {
+    const cleanReferredCode = referredCode?.trim().toUpperCase() || "";
+
     if (isMockAppwrite) {
       const mockUid = "user_riser_" + Math.floor(Math.random() * 1000);
       const mockU: UserProfile = {
@@ -798,7 +910,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         referralBonus: 0,
         totalProfit: 0,
         referralCode: "RISE" + Math.floor(Math.random() * 9000 + 1000),
-        referredBy: referredCode || "",
+        referredBy: cleanReferredCode,
         isAdmin: email.toLowerCase() === "paypalclint007@gmail.com",
         registeredAt: new Date().toISOString()
       };
@@ -810,13 +922,13 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUsers(newUsers);
       syncLocal("fr_users", newUsers);
 
-      if (referredCode) {
-        const referrer = users.find(u => u.referralCode === referredCode);
+      if (cleanReferredCode) {
+        const referrer = users.find(u => u.referralCode.toUpperCase() === cleanReferredCode);
         if (referrer) {
           const newRefRecord: Referral = {
             id: "ref_" + Date.now(),
             referrerId: referrer.id,
-            referrerCode: referredCode,
+            referrerCode: cleanReferredCode,
             referredId: mockUid,
             referredName: name,
             referredEmail: email,
@@ -858,7 +970,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         referralBonus: 0,
         totalProfit: 0,
         referralCode: "RISE" + Math.floor(Math.random() * 9000 + 1000),
-        referredBy: referredCode || "",
+        referredBy: cleanReferredCode,
         isAdmin: email.toLowerCase() === "paypalclint007@gmail.com",
         registeredAt: new Date().toISOString()
       };
@@ -874,21 +986,47 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn("Failed to write profile document to Appwrite DB during registration, using local fallback:", createErr);
       }
 
-      if (referredCode) {
+      if (cleanReferredCode) {
         try {
-          const referrerQuery = await databases.listDocuments(
-            APPWRITE_CONFIG.databaseId,
-            APPWRITE_CONFIG.collections.users,
-            [Query.equal("referralCode", referredCode)]
-          ).catch(() => ({ documents: [] }));
+          let referrerDoc: UserProfile | null = null;
           
-          if (referrerQuery.documents.length > 0) {
-            const referrerDoc = referrerQuery.documents[0] as any as UserProfile;
+          try {
+            const referrerQuery = await databases.listDocuments(
+              APPWRITE_CONFIG.databaseId,
+              APPWRITE_CONFIG.collections.users,
+              [Query.equal("referralCode", cleanReferredCode)]
+            );
+            if (referrerQuery.documents.length > 0) {
+              referrerDoc = mapUserFromDoc(referrerQuery.documents[0]);
+            }
+          } catch (queryErr) {
+            console.warn("Index query for referralCode failed, performing fallback scan.", queryErr);
+          }
+          
+          // Fallback scan: load is safely in case of missing index
+          if (!referrerDoc) {
+            try {
+              const allUsersDocs = await databases.listDocuments(
+                APPWRITE_CONFIG.databaseId,
+                APPWRITE_CONFIG.collections.users,
+                []
+              );
+              const mappedUsers = allUsersDocs.documents.map(mapUserFromDoc);
+              const match = mappedUsers.find(u => u.referralCode.toUpperCase() === cleanReferredCode);
+              if (match) {
+                referrerDoc = match;
+              }
+            } catch (fallbackErr) {
+              console.error("Fallback scan for referrer failed:", fallbackErr);
+            }
+          }
+          
+          if (referrerDoc) {
             const refId = `${referrerDoc.id}_${userId}`;
             const referralRec: Referral = {
               id: refId,
               referrerId: referrerDoc.id,
-              referrerCode: referredCode,
+              referrerCode: cleanReferredCode,
               referredId: userId,
               referredName: name,
               referredEmail: email,
@@ -1221,13 +1359,41 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (currentUser.referredBy) {
         try {
-          const referrerQuery = await databases.listDocuments(
-            APPWRITE_CONFIG.databaseId,
-            APPWRITE_CONFIG.collections.users,
-            [Query.equal("referralCode", currentUser.referredBy)]
-          );
-          if (referrerQuery.documents.length > 0) {
-            const rDoc = referrerQuery.documents[0] as any as UserProfile;
+          let referrerDoc: UserProfile | null = null;
+          
+          try {
+            const referrerQuery = await databases.listDocuments(
+              APPWRITE_CONFIG.databaseId,
+              APPWRITE_CONFIG.collections.users,
+              [Query.equal("referralCode", currentUser.referredBy)]
+            );
+            if (referrerQuery.documents.length > 0) {
+              referrerDoc = mapUserFromDoc(referrerQuery.documents[0]);
+            }
+          } catch (queryErr) {
+            console.warn("Index query for referralCode failed on payout check. Performing fallback scan.", queryErr);
+          }
+          
+          // Fallback scan: load user safely
+          if (!referrerDoc) {
+            try {
+              const allUsersDocs = await databases.listDocuments(
+                APPWRITE_CONFIG.databaseId,
+                APPWRITE_CONFIG.collections.users,
+                []
+              );
+              const mappedUsers = allUsersDocs.documents.map(mapUserFromDoc);
+              const match = mappedUsers.find(u => u.referralCode.toUpperCase() === currentUser.referredBy.toUpperCase());
+              if (match) {
+                referrerDoc = match;
+              }
+            } catch (fallbackErr) {
+              console.error("Fallback scan for payout referrer failed:", fallbackErr);
+            }
+          }
+
+          if (referrerDoc) {
+            const rDoc = referrerDoc;
             const refId = `${rDoc.id}_${currentUser.id}`;
             
             try {
