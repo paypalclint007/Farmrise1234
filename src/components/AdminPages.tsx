@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useFarm } from "../context/FarmContext";
+import AdminLiveDashboard from "./AdminLiveDashboard";
 import { 
   Users, DollarSign, FileText, Check, X, ShieldAlert, Award,
   ArrowLeft, Bell, Landmark, Settings, Plus, Star, Layers, Percent,
@@ -69,7 +70,7 @@ export default function AdminPages() {
 
   switch (currentPage) {
     case "admin-dashboard":
-      return <AdminDashboardView />;
+      return <AdminLiveDashboard />;
     case "admin-users":
       return <UsersManagementView />;
     case "admin-deposits":
@@ -83,7 +84,7 @@ export default function AdminPages() {
     case "admin-notifications":
       return <NotificationsManagementView />;
     default:
-      return <AdminDashboardView />;
+      return <AdminLiveDashboard />;
   }
 }
 
@@ -417,21 +418,33 @@ function UsersManagementView() {
                     )}
                   </div>
                   
-                  <div className="shrink-0 flex flex-col items-end gap-2">
+                  <div className="shrink-0 flex flex-col items-end gap-1.5">
+                    {/* Role Badge */}
                     {u.isAdmin ? (
-                      <span className="text-[9px] bg-red-950/80 font-mono text-red-400 px-2 py-1 border border-red-500/20 rounded-lg font-bold uppercase block text-center">
-                        HQ ADMIN
+                      <span className="text-[9px] bg-red-500/15 font-mono text-red-400 px-2 py-0.5 border border-red-500/20 rounded-md font-extrabold uppercase tracking-wider block text-center">
+                        ADMIN
                       </span>
                     ) : (
-                      <span className="text-[9px] bg-sky-950/80 font-mono text-sky-450 px-2 py-1 border border-sky-500/20 rounded-lg font-bold uppercase block text-center">
+                      <span className="text-[9px] bg-blue-500/10 font-mono text-blue-400 px-2 py-0.5 border border-blue-500/10 rounded-md font-bold uppercase tracking-wider block text-center">
                         SPONSOR
+                      </span>
+                    )}
+
+                    {/* Status Badge */}
+                    {u.isBanned ? (
+                      <span className="text-[9px] bg-amber-500/15 font-mono text-amber-400 px-2 py-0.5 border border-amber-500/20 rounded-md font-bold uppercase tracking-wider block text-center">
+                        SUSPENDED
+                      </span>
+                    ) : (
+                      <span className="text-[9px] bg-emerald-500/15 font-mono text-emerald-400 px-2 py-0.5 border border-emerald-500/20 rounded-md font-bold uppercase tracking-wider block text-center">
+                        ACTIVE
                       </span>
                     )}
                     
                     {!isEditing && (
                       <button 
                         onClick={() => handleStartEdit(u)}
-                        className="text-[10px] font-mono font-bold uppercase tracking-wider text-gold-accent hover:underline flex items-center gap-1 bg-white/5 py-1 px-2.5 rounded border border-white/5 mt-1 animate-pulse"
+                        className="text-[10px] font-mono font-bold uppercase tracking-wider text-gold-accent hover:underline flex items-center gap-1 bg-white/5 py-1 px-2.5 rounded border border-white/5 mt-1"
                       >
                         <Edit className="w-3 h-3" /> Edit Metrics
                       </button>

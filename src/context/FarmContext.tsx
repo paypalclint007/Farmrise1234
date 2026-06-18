@@ -574,10 +574,17 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       try {
+        // Enforce Query.limit(5000) to ensure the client/admin fetches everything, skipping default Appwrite 25 count cap
+        const finalQueries = [...queries];
+        const hasLimit = queries.some(q => q && typeof q === "string" && q.includes("limit"));
+        if (!hasLimit) {
+          finalQueries.push(Query.limit(5000));
+        }
+
         const res = await databases.listDocuments(
           APPWRITE_CONFIG.databaseId,
           collectionId,
-          queries
+          finalQueries
         );
         return res.documents;
       } catch (err: any) {
@@ -593,7 +600,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const fallbackRes = await databases.listDocuments(
               APPWRITE_CONFIG.databaseId,
               collectionId,
-              [] // no queries - fetch all
+              [Query.limit(5000)] // no queries - fetch all up to 5000
             );
             let docs = fallbackRes.documents;
             for (const q of queries) {
@@ -621,7 +628,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (isAuthError) {
-          console.warn(`Access check: Appwrite collection "${collectionId}" query unauthorized or permission restricted. Operating under client sandbox sandbox context.`);
+          console.warn(`Access check: Appwrite collection "${collectionId}" query unauthorized or permission restricted. Operating under client sandbox context.`);
           return getCollectionFallback(collectionId);
         }
         
@@ -634,7 +641,14 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const documents = await safeFetchCollection(APPWRITE_CONFIG.collections.plans);
       const fetchedPlans = documents.map(mapPlanFromDoc);
-      if (fetchedPlans.length > 0) setPlans(fetchedPlans);
+      if (fetchedPlans.length > 0) {
+        setPlans(fetchedPlans);
+        try {
+          localStorage.setItem("fr_plans", JSON.stringify(fetchedPlans));
+        } catch (err) {
+          console.warn("localStorage push fail for plans", err);
+        }
+      }
     } catch (e) {
       console.warn("Error processing plans:", e);
     }
@@ -644,7 +658,13 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const documents = await safeFetchCollection(APPWRITE_CONFIG.collections.farmUpdates);
       const fetchedUpdates = documents.map(mapFarmUpdateFromDoc);
       if (fetchedUpdates.length > 0) {
-        setFarmUpdates(fetchedUpdates.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        const sortedUpdates = fetchedUpdates.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setFarmUpdates(sortedUpdates);
+        try {
+          localStorage.setItem("fr_updates", JSON.stringify(sortedUpdates));
+        } catch (err) {
+          console.warn("localStorage push fail for Updates", err);
+        }
       }
     } catch (e) {
       console.warn("Error processing farm updates:", e);
@@ -656,7 +676,21 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         APPWRITE_CONFIG.collections.deposits,
         userProfile.isAdmin ? [] : [Query.equal("userId", userProfile.id)]
       );
-      setDeposits(documents.map(mapDepositFromDoc));
+      const mappedDeposits = documents.map(mapDepositFromDoc);
+      setDeposits(mappedDeposits);
+      
+      try {
+        if (userProfile.isAdmin) {
+          localStorage.setItem("fr_deposits", JSON.stringify(mappedDeposits));
+        } else {
+          // Merge client-local cache
+          const cached = JSON.parse(localStorage.getItem("fr_deposits") || "[]");
+          const rest = cached.filter((c: any) => c.userId !== userProfile.id);
+          localStorage.setItem("fr_deposits", JSON.stringify([...mappedDeposits, ...rest]));
+        }
+      } catch (err) {
+        console.warn("localStorage push fail for Deposits", err);
+      }
     } catch (e) {
       console.warn("Error processing deposits:", e);
     }
@@ -667,7 +701,20 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         APPWRITE_CONFIG.collections.investments,
         userProfile.isAdmin ? [] : [Query.equal("userId", userProfile.id)]
       );
-      setInvestments(documents.map(mapInvestmentFromDoc));
+      const mappedInvestments = documents.map(mapInvestmentFromDoc);
+      setInvestments(mappedInvestments);
+      
+      try {
+        if (userProfile.isAdmin) {
+          localStorage.setItem("fr_investments", JSON.stringify(mappedInvestments));
+        } else {
+          const cached = JSON.parse(localStorage.getItem("fr_investments") || "[]");
+          const rest = cached.filter((c: any) => c.userId !== userProfile.id);
+          localStorage.setItem("fr_investments", JSON.stringify([...mappedInvestments, ...rest]));
+        }
+      } catch (err) {
+        console.warn("localStorage push fail for Investments", err);
+      }
     } catch (e) {
       console.warn("Error processing investments:", e);
     }
@@ -678,7 +725,20 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         APPWRITE_CONFIG.collections.withdrawals,
         userProfile.isAdmin ? [] : [Query.equal("userId", userProfile.id)]
       );
-      setWithdrawals(documents.map(mapWithdrawalFromDoc));
+      const mappedWithdrawals = documents.map(mapWithdrawalFromDoc);
+      setWithdrawals(mappedWithdrawals);
+      
+      try {
+        if (userProfile.isAdmin) {
+          localStorage.setItem("fr_withdrawals", JSON.stringify(mappedWithdrawals));
+        } else {
+          const cached = JSON.parse(localStorage.getItem("fr_withdrawals") || "[]");
+          const rest = cached.filter((c: any) => c.userId !== userProfile.id);
+          localStorage.setItem("fr_withdrawals", JSON.stringify([...mappedWithdrawals, ...rest]));
+        }
+      } catch (err) {
+        console.warn("localStorage push fail for Withdrawals", err);
+      }
     } catch (e) {
       console.warn("Error processing withdrawals:", e);
     }
@@ -689,7 +749,20 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         APPWRITE_CONFIG.collections.referrals,
         userProfile.isAdmin ? [] : [Query.equal("referrerId", userProfile.id)]
       );
-      setReferrals(documents as any as Referral[]);
+      const mappedReferrals = documents as any as Referral[];
+      setReferrals(mappedReferrals);
+      
+      try {
+        if (userProfile.isAdmin) {
+          localStorage.setItem("fr_referrals", JSON.stringify(mappedReferrals));
+        } else {
+          const cached = JSON.parse(localStorage.getItem("fr_referrals") || "[]");
+          const rest = cached.filter((c: any) => c.referrerId !== userProfile.id);
+          localStorage.setItem("fr_referrals", JSON.stringify([...mappedReferrals, ...rest]));
+        }
+      } catch (err) {
+        console.warn("localStorage push fail for Referrals", err);
+      }
     } catch (e) {
       console.warn("Error processing referrals:", e);
     }
@@ -698,8 +771,15 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const documents = await safeFetchCollection(APPWRITE_CONFIG.collections.notifications);
       const allNotifs = documents as any as Notification[];
-      const filtered = allNotifs.filter(n => n.userId === "all" || n.userId === userProfile.id);
-      setNotifications(filtered.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      const sortedNotifs = allNotifs.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const filtered = sortedNotifs.filter(n => n.userId === "all" || n.userId === userProfile.id);
+      setNotifications(filtered);
+      
+      try {
+        localStorage.setItem("fr_notifications", JSON.stringify(sortedNotifs));
+      } catch (err) {
+        console.warn("localStorage push fail for Notifications", err);
+      }
     } catch (e) {
       console.warn("Error processing notifications:", e);
     }
@@ -708,7 +788,13 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (userProfile.isAdmin) {
       try {
         const documents = await safeFetchCollection(APPWRITE_CONFIG.collections.users);
-        setUsers(documents.map(mapUserFromDoc));
+        const mappedUsers = documents.map(mapUserFromDoc);
+        setUsers(mappedUsers);
+        try {
+          localStorage.setItem("fr_users", JSON.stringify(mappedUsers));
+        } catch (err) {
+          console.warn("localStorage push fail for Users", err);
+        }
       } catch (e) {
         console.warn("Error processing admin users list:", e);
       }
@@ -2010,6 +2096,11 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
       const updatedUsers = users.map(u => u.id === userId ? { ...u, isBanned } : u);
       setUsers(updatedUsers);
+      try {
+        localStorage.setItem("fr_users", JSON.stringify(updatedUsers));
+      } catch (err) {
+        console.warn("Storage write failed in banUser:", err);
+      }
       
       if (currentUser?.id === userId) {
         const updatedCurrentUser = { ...currentUser, isBanned };
@@ -2071,6 +2162,11 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const updatedUsers = users.map(u => u.id === userId ? { ...u, ...fields } : u);
       setUsers(updatedUsers);
+      try {
+        localStorage.setItem("fr_users", JSON.stringify(updatedUsers));
+      } catch (err) {
+        console.warn("Storage write failed in adjustUserWallet:", err);
+      }
       
       if (currentUser?.id === userId) {
         const updatedCurrentUser = { ...currentUser, ...fields };
