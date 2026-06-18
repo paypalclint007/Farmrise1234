@@ -1014,11 +1014,10 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       syncLocal("fr_current_user", userProfile);
       setCurrentPage("dashboard");
     } catch (err: any) {
-      console.warn("Real Appwrite login failed, attempting automated mock fallback to keep app running:", err);
-      const isNetworkOrCORS = true; // By all means login: Fallback on any connection or credential issue
-
-      if (isNetworkOrCORS) {
-        console.log("Triggering silent simulated mock fallback for email:", email);
+      console.warn("Real Appwrite login failed:", err);
+      // Only fallback to mock if we are explicitly running in Mock Mode by design
+      if (isMockAppwrite) {
+        console.log("Triggering simulated mock fallback for email:", email);
         const isEmailAdmin = email.toLowerCase() === "paypalclint007@gmail.com";
         const mockUid = "user_riser_" + Math.floor(Math.random() * 1000);
         const mockU: UserProfile = {
@@ -1052,7 +1051,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         return;
       }
-      throw new Error(err.message || "Failed to sign-in to investor account.");
+      throw new Error(err.message || "Failed to sign-in to investor account. Please verify credentials or network.");
     }
   };
 
@@ -1220,11 +1219,10 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setCurrentPage("dashboard");
     } catch (err: any) {
-      console.warn("Real Appwrite sign-up failed, attempting automated mock fallback to keep app running:", err);
-      const isNetworkOrCORS = true; // By all means signup: Fallback on any connection or credential issue
-
-      if (isNetworkOrCORS) {
-        console.log("Triggering silent simulated mock fallback for register email:", email);
+      console.warn("Real Appwrite sign-up failed:", err);
+      // Only fallback to mock if we are explicitly running in Mock Mode by design
+      if (isMockAppwrite) {
+        console.log("Triggering simulated mock fallback for register email:", email);
         const mockUid = "user_riser_" + Math.floor(Math.random() * 1000);
         const mockU: UserProfile = {
           id: mockUid,
@@ -1275,7 +1273,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         return;
       }
-      throw new Error(err.message || "Failed to register new investor profile.");
+      throw new Error(err.message || "Failed to register new investor profile. Please check that password is at least 8 characters and collections exist.");
     }
   };
 

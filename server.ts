@@ -6,6 +6,49 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Auto-sync environment variables to persistent config file if present
+try {
+  const envProjectId = process.env.VITE_APPWRITE_PROJECT_ID;
+  if (envProjectId) {
+    const configPath = path.join(process.cwd(), "src", "appwrite-config.json");
+    const fs = require("fs");
+    let fileConfig: any = {};
+    if (fs.existsSync(configPath)) {
+      try {
+        fileConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      } catch (e) {}
+    }
+    
+    // Only write if there's a change to prevent infinite loop on dev server rebuild
+    const hasChanged = fileConfig.projectId !== envProjectId ||
+      fileConfig.endpoint !== (process.env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1") ||
+      fileConfig.useMock === true;
+
+    if (hasChanged) {
+      const mergedConfig = {
+        endpoint: process.env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1",
+        projectId: envProjectId,
+        databaseId: process.env.VITE_APPWRITE_DATABASE_ID || "default",
+        useMock: false,
+        collections: {
+          users: process.env.VITE_APPWRITE_USERS_COLLECTION_ID || fileConfig.collections?.users || "users",
+          plans: process.env.VITE_APPWRITE_PLANS_COLLECTION_ID || fileConfig.collections?.plans || "investmentPlans",
+          deposits: process.env.VITE_APPWRITE_DEPOSITS_COLLECTION_ID || fileConfig.collections?.deposits || "deposits",
+          investments: process.env.VITE_APPWRITE_INVESTMENTS_COLLECTION_ID || fileConfig.collections?.investments || "investments",
+          withdrawals: process.env.VITE_APPWRITE_WITHDRAWALS_COLLECTION_ID || fileConfig.collections?.withdrawals || "withdrawals",
+          notifications: process.env.VITE_APPWRITE_NOTIFICATIONS_COLLECTION_ID || fileConfig.collections?.notifications || "notifications",
+          farmUpdates: process.env.VITE_APPWRITE_FARM_UPDATES_COLLECTION_ID || fileConfig.collections?.farmUpdates || "farmUpdates",
+          referrals: process.env.VITE_APPWRITE_REFERRALS_COLLECTION_ID || fileConfig.collections?.referrals || "referrals",
+        }
+      };
+      fs.writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2), "utf8");
+      console.log("Persistent appwrite-config.json updated from server-side environment configurations successfully.");
+    }
+  }
+} catch (err) {
+  console.error("Failed to auto-sync environment variables to persistent config file:", err);
+}
+
 const app = express();
 const PORT = 3000;
 
@@ -29,7 +72,13 @@ if (apiKey) {
 
 // API Routes
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", time: new Date().toISOString() });
+  res.json({ 
+    status: "ok", 
+    time: new Date().toISOString(),
+    env_keys: Object.keys(process.env).filter(k => k.includes("APPWRITE")),
+    has_project_id: !!process.env.VITE_APPWRITE_PROJECT_ID,
+    project_id_value: process.env.VITE_APPWRITE_PROJECT_ID ? process.env.VITE_APPWRITE_PROJECT_ID.substring(0, 5) + "..." : "empty"
+  });
 });
 
 // Appwrite Database Schema Deploy and Seed Endpoint
@@ -110,11 +159,46 @@ app.get("/api/appwrite/config", (req, res) => {
   try {
     const configPath = path.join(process.cwd(), "src", "appwrite-config.json");
     const fs = require("fs");
+    let fileConfig: any = {};
     if (fs.existsSync(configPath)) {
-      const configText = fs.readFileSync(configPath, "utf8");
-      return res.json(JSON.parse(configText));
+      try {
+        fileConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      } catch (e) {}
     }
-    return res.json({ useMock: true });
+
+    const envEndpoint = process.env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1";
+    const envProjectId = process.env.VITE_APPWRITE_PROJECT_ID || "";
+    const envDatabaseId = process.env.VITE_APPWRITE_DATABASE_ID || "default";
+    const envUseMock = !envProjectId;
+
+    let finalConfig = {
+      endpoint: fileConfig.endpoint || envEndpoint,
+      projectId: fileConfig.projectId || envProjectId,
+      databaseId: fileConfig.databaseId || envDatabaseId,
+      useMock: fileConfig.useMock !== undefined ? fileConfig.useMock : envUseMock,
+      collections: {
+        users: fileConfig.collections?.users || process.env.VITE_APPWRITE_USERS_COLLECTION_ID || "users",
+        plans: fileConfig.collections?.plans || process.env.VITE_APPWRITE_PLANS_COLLECTION_ID || "investmentPlans",
+        deposits: fileConfig.collections?.deposits || process.env.VITE_APPWRITE_DEPOSITS_COLLECTION_ID || "deposits",
+        investments: fileConfig.collections?.investments || process.env.VITE_APPWRITE_INVESTMENTS_COLLECTION_ID || "investments",
+        withdrawals: fileConfig.collections?.withdrawals || process.env.VITE_APPWRITE_WITHDRAWALS_COLLECTION_ID || "withdrawals",
+        notifications: fileConfig.collections?.notifications || process.env.VITE_APPWRITE_NOTIFICATIONS_COLLECTION_ID || "notifications",
+        farmUpdates: fileConfig.collections?.farmUpdates || process.env.VITE_APPWRITE_FARM_UPDATES_COLLECTION_ID || "farmUpdates",
+        referrals: fileConfig.collections?.referrals || process.env.VITE_APPWRITE_REFERRALS_COLLECTION_ID || "referrals",
+      }
+    };
+
+    if (finalConfig.projectId) {
+      if (fileConfig.useMock !== undefined) {
+        finalConfig.useMock = fileConfig.useMock;
+      } else {
+        finalConfig.useMock = false;
+      }
+    } else {
+      finalConfig.useMock = true;
+    }
+
+    return res.json(finalConfig);
   } catch (err: any) {
     return res.status(500).json({ error: err.message || "Failed to retrieve Appwrite config." });
   }
