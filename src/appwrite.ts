@@ -282,6 +282,19 @@ const mapFarmUpdateFromDoc = (doc: any) => {
   return doc;
 };
 
+const sanitizePayloadForAppwrite = (payload: any) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  const cleanObj = { ...payload };
+  delete cleanObj.id;
+  // Delete system attributes starting with $
+  Object.keys(cleanObj).forEach((k) => {
+    if (k.startsWith("$")) {
+      delete cleanObj[k];
+    }
+  });
+  return cleanObj;
+};
+
 const originalCreateDocument = databases.createDocument.bind(databases);
 const originalUpdateDocument = databases.updateDocument.bind(databases);
 const originalGetDocument = databases.getDocument.bind(databases);
@@ -316,6 +329,8 @@ databases.createDocument = (async (databaseIdOrParams: any, collectionId?: strin
   } else if (collId === APPWRITE_CONFIG.collections.farmUpdates) {
     payload = mapFarmUpdateToDoc(payload);
   }
+
+  payload = sanitizePayloadForAppwrite(payload);
 
   if (isObjectArgs) {
     databaseIdOrParams.data = payload;
@@ -354,6 +369,8 @@ databases.updateDocument = (async (databaseIdOrParams: any, collectionId?: strin
   } else if (collId === APPWRITE_CONFIG.collections.farmUpdates) {
     payload = mapFarmUpdateToDoc(payload);
   }
+
+  payload = sanitizePayloadForAppwrite(payload);
 
   if (isObjectArgs) {
     databaseIdOrParams.data = payload;
