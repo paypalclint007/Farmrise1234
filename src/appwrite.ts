@@ -1,16 +1,29 @@
 import { Client, Account, Databases, Query } from "appwrite";
+import savedConfig from "./appwrite-config.json";
 
 const metaEnv = (import.meta as any).env || {};
 
+export function cleanQuoteString(raw: any, fallback: string = ""): string {
+  if (raw === undefined || raw === null) return fallback;
+  let str = String(raw).trim();
+  if (str.startsWith('"') && str.endsWith('"')) {
+    str = str.slice(1, -1).trim();
+  } else if (str.startsWith("'") && str.endsWith("'")) {
+    str = str.slice(1, -1).trim();
+  }
+  return str.replace(/['"]/g, "").trim();
+}
+
 // Check if we are using local storage mock fallback (when Appwrite Credentials are not set in the environment)
 const initialConfig = getAppwriteConfig();
-export const isMockAppwrite = initialConfig.isMockAppwrite;
+export let isMockAppwrite = initialConfig.isMockAppwrite;
 
 export const client = new Client();
+export const realtimeClient = new Client();
 
 export function formatAppwriteEndpoint(raw: string): string {
   if (!raw) return "https://cloud.appwrite.io/v1";
-  let url = raw.trim();
+  let url = cleanQuoteString(raw);
   if (url.includes("/api/appwrite")) {
     return url;
   }
@@ -29,19 +42,33 @@ export function formatAppwriteEndpoint(raw: string): string {
 export function getAppwriteConfig() {
   const env = (import.meta as any).env || {};
   
-  let endpoint = "https://cloud.appwrite.io/v1";
-  let projectId = env.VITE_APPWRITE_PROJECT_ID || "";
-  let databaseId = env.VITE_APPWRITE_DATABASE_ID || "default";
+  let endpoint = cleanQuoteString(env.VITE_APPWRITE_ENDPOINT) || "https://cloud.appwrite.io/v1";
+  let projectId = cleanQuoteString(env.VITE_APPWRITE_PROJECT_ID) || "";
+  let databaseId = cleanQuoteString(env.VITE_APPWRITE_DATABASE_ID) || "default";
   let collections = {
-    users: env.VITE_APPWRITE_USERS_COLLECTION_ID || "users",
-    plans: env.VITE_APPWRITE_PLANS_COLLECTION_ID || "investmentPlans",
-    deposits: env.VITE_APPWRITE_DEPOSITS_COLLECTION_ID || "deposits",
-    investments: env.VITE_APPWRITE_INVESTMENTS_COLLECTION_ID || "investments",
-    withdrawals: env.VITE_APPWRITE_WITHDRAWALS_COLLECTION_ID || "withdrawals",
-    notifications: env.VITE_APPWRITE_NOTIFICATIONS_COLLECTION_ID || "notifications",
-    farmUpdates: env.VITE_APPWRITE_FARM_UPDATES_COLLECTION_ID || "farmUpdates",
-    referrals: env.VITE_APPWRITE_REFERRALS_COLLECTION_ID || "referrals",
+    users: cleanQuoteString(env.VITE_APPWRITE_USERS_COLLECTION_ID || "users"),
+    plans: cleanQuoteString(env.VITE_APPWRITE_PLANS_COLLECTION_ID || "investmentPlans"),
+    deposits: cleanQuoteString(env.VITE_APPWRITE_DEPOSITS_COLLECTION_ID || "deposits"),
+    investments: cleanQuoteString(env.VITE_APPWRITE_INVESTMENTS_COLLECTION_ID || "investments"),
+    withdrawals: cleanQuoteString(env.VITE_APPWRITE_WITHDRAWALS_COLLECTION_ID || "withdrawals"),
+    notifications: cleanQuoteString(env.VITE_APPWRITE_NOTIFICATIONS_COLLECTION_ID || "notifications"),
+    farmUpdates: cleanQuoteString(env.VITE_APPWRITE_FARM_UPDATES_COLLECTION_ID || "farmUpdates"),
+    referrals: cleanQuoteString(env.VITE_APPWRITE_REFERRALS_COLLECTION_ID || "referrals"),
   };
+
+  // Override with saved JSON configuration if configured
+  if (savedConfig && savedConfig.projectId) {
+    endpoint = cleanQuoteString(savedConfig.endpoint) || endpoint;
+    projectId = cleanQuoteString(savedConfig.projectId);
+    databaseId = cleanQuoteString(savedConfig.databaseId) || databaseId;
+    if (savedConfig.collections) {
+      Object.entries(savedConfig.collections).forEach(([key, value]) => {
+        if (value && (collections as any)[key] !== undefined) {
+          (collections as any)[key] = cleanQuoteString(value);
+        }
+      });
+    }
+  }
 
   const isDevPreview = typeof window !== "undefined" && (
     window.location.hostname.includes("run.app") || 
@@ -51,11 +78,19 @@ export function getAppwriteConfig() {
     window.location.hostname.includes("webcontainer.io")
   );
 
-  const rawEndpoint = env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1";
+  const rawEndpoint = endpoint || "https://cloud.appwrite.io/v1";
   const cleanedEndpoint = formatAppwriteEndpoint(rawEndpoint);
   endpoint = isDevPreview ? `${window.location.origin}/api/appwrite` : cleanedEndpoint;
 
   let useMock = !projectId;
+
+  if (savedConfig && savedConfig.useMock !== undefined && !env.VITE_APPWRITE_PROJECT_ID) {
+    if (!savedConfig.projectId) {
+      useMock = true;
+    } else {
+      useMock = savedConfig.useMock;
+    }
+  }
 
   if (typeof window !== "undefined") {
     try {
@@ -71,10 +106,14 @@ export function getAppwriteConfig() {
           useMock = false;
         }
         if (parsed.endpoint) endpoint = formatAppwriteEndpoint(parsed.endpoint);
-        if (parsed.projectId) projectId = parsed.projectId;
-        if (parsed.databaseId) databaseId = parsed.databaseId;
+        if (parsed.projectId) projectId = cleanQuoteString(parsed.projectId);
+        if (parsed.databaseId) databaseId = cleanQuoteString(parsed.databaseId);
         if (parsed.collections) {
-          collections = { ...collections, ...parsed.collections };
+          Object.entries(parsed.collections).forEach(([key, value]) => {
+            if (value && (collections as any)[key] !== undefined) {
+              (collections as any)[key] = cleanQuoteString(value);
+            }
+          });
         }
       }
     } catch (e) {
@@ -99,7 +138,7 @@ export const APPWRITE_CONFIG = {
   collections: initialConfig.collections
 };
 
-export function saveAppwriteOverride(cfg: {
+export async function saveAppwriteOverride(cfg: {
   endpoint: string;
   projectId: string;
   databaseId: string;
@@ -108,13 +147,50 @@ export function saveAppwriteOverride(cfg: {
 }) {
   if (typeof window !== "undefined") {
     localStorage.setItem("fr_appwrite_override", JSON.stringify(cfg));
+    localStorage.removeItem("fr_fallback_active");
+
+    try {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 1500);
+      await fetch("/api/appwrite/save-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cfg),
+        signal: controller.signal
+      });
+      clearTimeout(id);
+    } catch (e) {
+      console.warn("Backend persistent config Sync bypassed/failed:", e);
+    }
+
     window.location.reload();
   }
 }
 
-export function clearAppwriteOverride() {
+export async function clearAppwriteOverride() {
   if (typeof window !== "undefined") {
     localStorage.removeItem("fr_appwrite_override");
+    localStorage.removeItem("fr_fallback_active");
+
+    try {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 1500);
+      await fetch("/api/appwrite/save-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: "https://cloud.appwrite.io/v1",
+          projectId: "",
+          databaseId: "default",
+          useMock: true
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(id);
+    } catch (e) {
+      console.warn("Backend persistent config Clear sync bypassed/failed:", e);
+    }
+
     window.location.reload();
   }
 }
@@ -137,6 +213,31 @@ if (typeof window !== "undefined") {
 
 if (!isMockAppwrite) {
   client.setEndpoint(endpoint).setProject(projectId);
+  const realEndpoint = endpoint.includes("/api/appwrite") ? "https://cloud.appwrite.io/v1" : endpoint;
+  realtimeClient.setEndpoint(realEndpoint).setProject(projectId);
+}
+
+export function reconfigureAppwrite(cfg: {
+  endpoint: string;
+  projectId: string;
+  databaseId: string;
+  useMock: boolean;
+  collections?: any;
+}) {
+  isMockAppwrite = cfg.useMock;
+  if (!cfg.useMock && cfg.projectId) {
+    client.setEndpoint(cfg.endpoint).setProject(cfg.projectId);
+    const realEndpoint = cfg.endpoint.includes("/api/appwrite") ? "https://cloud.appwrite.io/v1" : cfg.endpoint;
+    realtimeClient.setEndpoint(realEndpoint).setProject(cfg.projectId);
+    APPWRITE_CONFIG.databaseId = cfg.databaseId;
+    if (cfg.collections) {
+      Object.assign(APPWRITE_CONFIG.collections, cfg.collections);
+    }
+    console.log("Appwrite client reconfigured to live mode:", cfg.projectId);
+  } else {
+    isMockAppwrite = true;
+    console.warn("Appwrite client reconfigured to mock sandbox mode.");
+  }
 }
 
 export const account = new Account(client);

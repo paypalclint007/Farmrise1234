@@ -4,7 +4,7 @@ import {
   FarmUpdate, Withdrawal, Notification, Referral 
 } from "../types";
 import { 
-  client, account, databases, APPWRITE_CONFIG, isMockAppwrite, handleAppwriteError, OperationType 
+  client, account, databases, realtimeClient, APPWRITE_CONFIG, isMockAppwrite, handleAppwriteError, OperationType 
 } from "../appwrite";
 import { ID, Query } from "appwrite";
 
@@ -359,6 +359,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(true);
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [isMockSync, setIsMockSync] = useState<boolean>(isMockAppwrite);
 
   // Sync state to local storage in mock mode
   const syncLocal = (key: string, data: any) => {
@@ -476,57 +477,77 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // 1. Initial configuration check & Local state loading
   useEffect(() => {
-    if (isMockAppwrite) {
-      const storedUser = localStorage.getItem("fr_current_user");
-      const storedPlans = localStorage.getItem("fr_plans");
-      const storedDeposits = localStorage.getItem("fr_deposits");
-      const storedInvestments = localStorage.getItem("fr_investments");
-      const storedWithdrawals = localStorage.getItem("fr_withdrawals");
-      const storedUpdates = localStorage.getItem("fr_updates");
-      const storedNotifications = localStorage.getItem("fr_notifications");
-      const storedUsers = localStorage.getItem("fr_users");
-      const storedReferrals = localStorage.getItem("fr_referrals");
-
-      if (storedUser) setCurrentUser(JSON.parse(storedUser));
-      if (storedPlans) setPlans(JSON.parse(storedPlans));
-      else localStorage.setItem("fr_plans", JSON.stringify(DEFAULT_PLANS));
-
-      if (storedDeposits) setDeposits(JSON.parse(storedDeposits));
-      if (storedInvestments) setInvestments(JSON.parse(storedInvestments));
-      if (storedWithdrawals) setWithdrawals(JSON.parse(storedWithdrawals));
-      if (storedUpdates) setFarmUpdates(JSON.parse(storedUpdates));
-      else localStorage.setItem("fr_updates", JSON.stringify(DEFAULT_UPDATES));
-
-      if (storedNotifications) setNotifications(JSON.parse(storedNotifications));
-      if (storedUsers) setUsers(JSON.parse(storedUsers));
-      
-      if (storedReferrals) {
-        setReferrals(JSON.parse(storedReferrals));
-      } else {
-        const dummyReferrals: Referral[] = [];
-        setReferrals(dummyReferrals);
-        localStorage.setItem("fr_referrals", JSON.stringify(dummyReferrals));
-      }
-      
-      setLoading(false);
-      setTimeout(() => {
-        if (storedUser) {
-          setCurrentPage("dashboard");
-        } else {
-          let initialPage = "login";
-          if (typeof window !== "undefined") {
-            const params = new URLSearchParams(window.location.search);
-            const hasRef = params.get("ref") || params.get("referredCode") || params.get("code");
-            if (hasRef) {
-              initialPage = "register";
-            }
+    const initConfig = async () => {
+      try {
+        const res = await fetch("/api/appwrite/config");
+        if (res.ok) {
+          const cfg = await res.json();
+          if (cfg && cfg.projectId && !cfg.useMock) {
+            const { reconfigureAppwrite } = await import("../appwrite");
+            reconfigureAppwrite(cfg);
+            setIsMockSync(false);
           }
-          setCurrentPage(initialPage);
         }
-      }, 1500);
-    } else {
-      checkSession();
-    }
+      } catch (err) {
+        console.warn("Could not retrieve remote appwrite config, falling back to compiled/local:", err);
+      }
+
+      // Re-import isMockAppwrite to get its latest live bound value
+      const { isMockAppwrite: currentMockState } = await import("../appwrite");
+      if (currentMockState) {
+        const storedUser = localStorage.getItem("fr_current_user");
+        const storedPlans = localStorage.getItem("fr_plans");
+        const storedDeposits = localStorage.getItem("fr_deposits");
+        const storedInvestments = localStorage.getItem("fr_investments");
+        const storedWithdrawals = localStorage.getItem("fr_withdrawals");
+        const storedUpdates = localStorage.getItem("fr_updates");
+        const storedNotifications = localStorage.getItem("fr_notifications");
+        const storedUsers = localStorage.getItem("fr_users");
+        const storedReferrals = localStorage.getItem("fr_referrals");
+
+        if (storedUser) setCurrentUser(JSON.parse(storedUser));
+        if (storedPlans) setPlans(JSON.parse(storedPlans));
+        else localStorage.setItem("fr_plans", JSON.stringify(DEFAULT_PLANS));
+
+        if (storedDeposits) setDeposits(JSON.parse(storedDeposits));
+        if (storedInvestments) setInvestments(JSON.parse(storedInvestments));
+        if (storedWithdrawals) setWithdrawals(JSON.parse(storedWithdrawals));
+        if (storedUpdates) setFarmUpdates(JSON.parse(storedUpdates));
+        else localStorage.setItem("fr_updates", JSON.stringify(DEFAULT_UPDATES));
+
+        if (storedNotifications) setNotifications(JSON.parse(storedNotifications));
+        if (storedUsers) setUsers(JSON.parse(storedUsers));
+        
+        if (storedReferrals) {
+          setReferrals(JSON.parse(storedReferrals));
+        } else {
+          const dummyReferrals: Referral[] = [];
+          setReferrals(dummyReferrals);
+          localStorage.setItem("fr_referrals", JSON.stringify(dummyReferrals));
+        }
+        
+        setLoading(false);
+        setTimeout(() => {
+          if (storedUser) {
+            setCurrentPage("dashboard");
+          } else {
+            let initialPage = "login";
+            if (typeof window !== "undefined") {
+              const params = new URLSearchParams(window.location.search);
+              const hasRef = params.get("ref") || params.get("referredCode") || params.get("code");
+              if (hasRef) {
+                initialPage = "register";
+              }
+            }
+            setCurrentPage(initialPage);
+          }
+        }, 1500);
+      } else {
+        await checkSession();
+      }
+    };
+
+    initConfig();
   }, []);
 
   // Fetch real Appwrite Database lists during active sessions
@@ -801,45 +822,100 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Real-time synchronization loop when user is active
+  const fetchPublicData = async () => {
+    if (isMockAppwrite) return;
+    
+    // Load Plans publicly
+    try {
+      const res = await databases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.plans,
+        [Query.limit(5000)]
+      );
+      const fetchedPlans = res.documents.map(mapPlanFromDoc);
+      if (fetchedPlans.length > 0) {
+        setPlans(fetchedPlans);
+        try {
+          localStorage.setItem("fr_plans", JSON.stringify(fetchedPlans));
+        } catch (err) {
+          console.warn("localStorage push fail for plans", err);
+        }
+      }
+    } catch (e) {
+      console.warn("Error processing plans in public fetch:", e);
+    }
+
+    // Load Updates publicly
+    try {
+      const res = await databases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.farmUpdates,
+        [Query.limit(5000)]
+      );
+      const fetchedUpdates = res.documents.map(mapFarmUpdateFromDoc);
+      if (fetchedUpdates.length > 0) {
+        const sortedUpdates = fetchedUpdates.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setFarmUpdates(sortedUpdates);
+        try {
+          localStorage.setItem("fr_updates", JSON.stringify(sortedUpdates));
+        } catch (err) {
+          console.warn("localStorage push fail for Updates", err);
+        }
+      }
+    } catch (e) {
+      console.warn("Error processing farm updates in public fetch:", e);
+    }
+  };
+
+  // Real-time synchronization loop when user or guest is active
   useEffect(() => {
-    if (isMockAppwrite || !currentUser) return;
+    if (isMockAppwrite) return;
 
-    fetchAllData(currentUser);
-
-    // Setup polling or subscription for real-time state consistency
-    const interval = setInterval(() => {
+    // Load first batch immediately
+    if (currentUser) {
       fetchAllData(currentUser);
-    }, 4000);
+    } else {
+      fetchPublicData();
+    }
 
-    // Check if we are running through the local API proxy or in a secure iframe environment.
-    // If so, skip WebSocket subscriptions to avoid connection loop error messages.
-    // Otherwise, allow direct Appwrite cloud Realtime (WebSockets) for blazing fast instant synchronization!
-    const isUsingProxy = typeof window !== "undefined" && 
-      (window.location.host.includes("run.app") || window.location.host.includes("localhost") || window.location.pathname.includes("/api/appwrite"));
+    // Setup polling backstop to ensure data consistency
+    const interval = setInterval(() => {
+      if (currentUser) {
+        fetchAllData(currentUser);
+      } else {
+        fetchPublicData();
+      }
+    }, 6000);
 
     let unsubscribe = () => {};
-    if (!isUsingProxy) {
-      try {
-        const channel = `databases.${APPWRITE_CONFIG.databaseId}.collections`;
-        unsubscribe = client.subscribe(
-          [
-            `${channel}.${APPWRITE_CONFIG.collections.users}.documents`,
-            `${channel}.${APPWRITE_CONFIG.collections.plans}.documents`,
-            `${channel}.${APPWRITE_CONFIG.collections.deposits}.documents`,
-            `${channel}.${APPWRITE_CONFIG.collections.investments}.documents`,
-            `${channel}.${APPWRITE_CONFIG.collections.withdrawals}.documents`,
-            `${channel}.${APPWRITE_CONFIG.collections.notifications}.documents`,
-            `${channel}.${APPWRITE_CONFIG.collections.farmUpdates}.documents`,
-            `${channel}.${APPWRITE_CONFIG.collections.referrals}.documents`,
-          ],
-          () => {
-            fetchAllData(currentUser);
-          }
-        );
-      } catch (err) {
-        console.warn("Could not establish real-time socket connection, relying on robust polling:", err);
-      }
+    try {
+      const channel = `databases.${APPWRITE_CONFIG.databaseId}.collections`;
+      
+      // Select appropriate documents based on authorization level
+      const channels = currentUser ? [
+        `${channel}.${APPWRITE_CONFIG.collections.users}.documents`,
+        `${channel}.${APPWRITE_CONFIG.collections.plans}.documents`,
+        `${channel}.${APPWRITE_CONFIG.collections.deposits}.documents`,
+        `${channel}.${APPWRITE_CONFIG.collections.investments}.documents`,
+        `${channel}.${APPWRITE_CONFIG.collections.withdrawals}.documents`,
+        `${channel}.${APPWRITE_CONFIG.collections.notifications}.documents`,
+        `${channel}.${APPWRITE_CONFIG.collections.farmUpdates}.documents`,
+        `${channel}.${APPWRITE_CONFIG.collections.referrals}.documents`,
+      ] : [
+        `${channel}.${APPWRITE_CONFIG.collections.plans}.documents`,
+        `${channel}.${APPWRITE_CONFIG.collections.farmUpdates}.documents`,
+      ];
+
+      unsubscribe = realtimeClient.subscribe(channels, () => {
+        console.log("Appwrite Realtime Event: State changed. Synchronizing active user/guest views...");
+        if (currentUser) {
+          fetchAllData(currentUser);
+        } else {
+          fetchPublicData();
+        }
+      });
+    } catch (err) {
+      console.warn("Could not establish real-time socket connection, relying on background polling fallback:", err);
     }
 
     return () => {
@@ -848,7 +924,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         unsubscribe();
       }
     };
-  }, [currentUser]);
+  }, [currentUser, isMockSync]);
 
   // Auth operations
   const loginWithEmail = async (email: string, pass: string) => {

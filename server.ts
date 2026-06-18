@@ -55,6 +55,71 @@ app.post("/api/appwrite/init", async (req, res) => {
   }
 });
 
+// Appwrite Endpoint Config Saver
+app.post("/api/appwrite/save-config", async (req, res) => {
+  try {
+    const { endpoint, projectId, databaseId, useMock, collections } = req.body;
+    
+    const cleanStr = (val: any) => {
+      if (!val) return "";
+      let str = String(val).trim();
+      if (str.startsWith('"') && str.endsWith('"')) {
+        str = str.slice(1, -1).trim();
+      } else if (str.startsWith("'") && str.endsWith("'")) {
+        str = str.slice(1, -1).trim();
+      }
+      return str.replace(/['"]/g, "").trim();
+    };
+
+    const finalEndpoint = cleanStr(endpoint) || "https://cloud.appwrite.io/v1";
+    const finalProjectId = cleanStr(projectId);
+    const finalDatabaseId = cleanStr(databaseId) || "default";
+    const finalUseMock = useMock === undefined ? !finalProjectId : !!useMock;
+    
+    const finalConfig = {
+      endpoint: finalEndpoint,
+      projectId: finalProjectId,
+      databaseId: finalDatabaseId,
+      useMock: finalUseMock,
+      collections: collections || {
+        users: "users",
+        plans: "investmentPlans",
+        deposits: "deposits",
+        investments: "investments",
+        withdrawals: "withdrawals",
+        notifications: "notifications",
+        farmUpdates: "farmUpdates",
+        referrals: "referrals"
+      }
+    };
+
+    const configPath = path.join(process.cwd(), "src", "appwrite-config.json");
+    const fs = require("fs");
+    fs.writeFileSync(configPath, JSON.stringify(finalConfig, null, 2), "utf8");
+    
+    console.log("Persistent Appwrite config updated on disk:", finalConfig);
+    return res.json({ success: true, message: "Configuration persisted successfully." });
+  } catch (err: any) {
+    console.error("Error saving persistent config:", err);
+    return res.status(500).json({ error: err.message || "Failed to persist Appwrite configuration." });
+  }
+});
+
+// Appwrite Endpoint Config Getter
+app.get("/api/appwrite/config", (req, res) => {
+  try {
+    const configPath = path.join(process.cwd(), "src", "appwrite-config.json");
+    const fs = require("fs");
+    if (fs.existsSync(configPath)) {
+      const configText = fs.readFileSync(configPath, "utf8");
+      return res.json(JSON.parse(configText));
+    }
+    return res.json({ useMock: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to retrieve Appwrite config." });
+  }
+});
+
 // Appwrite client request proxy to bypass CORS sandbox restrictions
 app.all("/api/appwrite/*", async (req, res) => {
   try {

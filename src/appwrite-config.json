@@ -1,0 +1,16 @@
+{
+  "endpoint": "https://cloud.appwrite.io/v1",
+  "projectId": "",
+  "databaseId": "default",
+  "useMock": true,
+  "collections": {
+    "users": "users",
+    "plans": "investmentPlans",
+    "deposits": "deposits",
+    "investments": "investments",
+    "withdrawals": "withdrawals",
+    "notifications": "notifications",
+    "farmUpdates": "farmUpdates",
+    "referrals": "referrals"
+  }
+}

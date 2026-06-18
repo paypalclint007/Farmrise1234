@@ -341,7 +341,7 @@ export default function AdminLiveDashboard() {
                 <span className="text-[10px] font-mono text-slate-400 uppercase font-black tracking-wider">Total Users</span>
                 <Users className="w-4 h-4 text-blue-400" />
               </div>
-              <span className="text-xl md:text-2xl font-black font-display text-blue-400 block">{stats.usersCount}</span>
+              <span className="text-xl md:text-2xl font-bold font-mono text-blue-400 block leading-tight">{stats.usersCount}</span>
               <span className="text-[9px] text-slate-500 font-mono mt-1 block">Active: {stats.activeUsersCount}</span>
             </div>
 
@@ -354,7 +354,7 @@ export default function AdminLiveDashboard() {
                 <span className="text-[10px] font-mono text-slate-400 uppercase font-black tracking-wider">Total Deposits</span>
                 <Landmark className="w-4 h-4 text-emerald-400" />
               </div>
-              <span className="text-xl md:text-2xl font-black font-display text-emerald-400 block">₦{stats.totalDepositedSum.toLocaleString()}</span>
+              <span className="text-xl md:text-2xl font-bold font-mono text-emerald-400 block leading-tight">₦{stats.totalDepositedSum.toLocaleString()}</span>
               {stats.pendingDepositsCount > 0 ? (
                 <span className="text-[9px] text-amber-400 font-mono mt-1 block flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
@@ -374,7 +374,7 @@ export default function AdminLiveDashboard() {
                 <span className="text-[10px] font-mono text-slate-400 uppercase font-black tracking-wider">Total Payouts</span>
                 <DollarSign className="w-4 h-4 text-rose-400" />
               </div>
-              <span className="text-xl md:text-2xl font-black font-display text-rose-400 block">₦{stats.totalWithdrawnSum.toLocaleString()}</span>
+              <span className="text-xl md:text-2xl font-bold font-mono text-rose-400 block leading-tight">₦{stats.totalWithdrawnSum.toLocaleString()}</span>
               {stats.pendingWithdrawalsCount > 0 ? (
                 <span className="text-[9px] text-red-400 font-mono mt-1 block flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
@@ -394,16 +394,16 @@ export default function AdminLiveDashboard() {
                 <span className="text-[10px] font-mono text-slate-400 uppercase font-black tracking-wider">Active Portfolios</span>
                 <TrendingUp className="w-4 h-4 text-gold-accent" />
               </div>
-              <span className="text-xl md:text-2xl font-black font-display text-gold-accent block">₦{stats.totalInvestedSum.toLocaleString()}</span>
+              <span className="text-xl md:text-2xl font-bold font-mono text-gold-accent block leading-tight">₦{stats.totalInvestedSum.toLocaleString()}</span>
               <span className="text-[9px] text-slate-400 font-mono mt-1 block">Crops spawned: {stats.activeInvestmentsCount}</span>
             </div>
 
             {/* TOTAL REVENUE GRID CARD */}
             <div className="glass-panel p-4 rounded-xl border border-gold-accent/25 relative overflow-hidden bg-slate-900/10 col-span-2 md:col-span-1">
               <span className="text-[10px] font-mono text-slate-400 uppercase font-black block tracking-wider mb-1">Total Net Cap</span>
-              <span className="text-xl md:text-2xl font-black font-display text-amber-300 block">₦{(stats.totalDepositedSum - stats.totalWithdrawnSum).toLocaleString()}</span>
+              <span className="text-xl md:text-2xl font-bold font-mono text-amber-300 block leading-tight">₦{(stats.totalDepositedSum - stats.totalWithdrawnSum).toLocaleString()}</span>
               <span className="text-[9.5px] text-slate-400 font-mono mt-1 block font-semibold">
-                Wallets active: ₦{stats.totalUserWallets.toLocaleString()}
+                Wallets: ₦{stats.totalUserWallets.toLocaleString()}
               </span>
             </div>
           </div>
