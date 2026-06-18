@@ -324,9 +324,13 @@ export function LoginPage() {
           </form>
         )}
 
-        <p className="text-center text-[11px] text-slate-440 mt-5">
+        <p className="text-center text-[12px] text-slate-400 mt-5 leading-loose">
           New to FarmRise?{" "}
-          <button onClick={() => navigate("register")} className="text-gold-accent font-bold hover:underline">
+          <button 
+            type="button" 
+            onClick={() => navigate("register")} 
+            className="text-gold-accent font-bold hover:underline py-2 px-3 bg-white/5 rounded-lg border border-white/5 cursor-pointer inline-block mt-1 hover:text-white transition-all text-xs"
+          >
             Register Account
           </button>
         </p>
@@ -654,9 +658,13 @@ export function RegisterPage() {
           </div>
         </form>
 
-        <p className="text-center text-[11px] text-slate-440 mt-5">
+        <p className="text-center text-[12px] text-slate-400 mt-5 leading-loose">
           Already registered?{" "}
-          <button onClick={() => navigate("login")} className="text-gold-accent font-bold hover:underline">
+          <button 
+            type="button" 
+            onClick={() => navigate("login")} 
+            className="text-gold-accent font-bold hover:underline py-2 px-3 bg-white/5 rounded-lg border border-white/5 cursor-pointer inline-block mt-1 hover:text-white transition-all text-xs"
+          >
             Login here
           </button>
         </p>
