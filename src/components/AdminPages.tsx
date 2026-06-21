@@ -1364,7 +1364,7 @@ function PlansManagementView() {
                           const ctx = canvas.getContext("2d");
                           if (ctx) {
                             ctx.drawImage(img, 0, 0, width, height);
-                            const compressedBase64 = canvas.toDataURL("image/jpeg", 0.75);
+                            const compressedBase64 = canvas.toDataURL("image/jpeg", 0.65);
                             setCatImg(compressedBase64);
                           }
                         };
@@ -1641,7 +1641,7 @@ function PlansManagementView() {
                             const ctx = canvas.getContext("2d");
                             if (ctx) {
                               ctx.drawImage(img, 0, 0, width, height);
-                              const compressedBase64 = canvas.toDataURL("image/jpeg", 0.75);
+                              const compressedBase64 = canvas.toDataURL("image/jpeg", 0.65);
                               setPImg(compressedBase64);
                             }
                           };
@@ -2024,7 +2024,7 @@ function FarmUpdatesManagementView() {
                           const ctx = canvas.getContext("2d");
                           if (ctx) {
                             ctx.drawImage(img, 0, 0, width, height);
-                            const compressedBase64 = canvas.toDataURL("image/jpeg", 0.75);
+                            const compressedBase64 = canvas.toDataURL("image/jpeg", 0.65);
                             setUImgRaw(compressedBase64);
                           }
                         };
@@ -2072,13 +2072,78 @@ function FarmUpdatesManagementView() {
               <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1.5 font-bold tracking-wider">
                 Associated Video MP4 Attachment URL (Optional)
               </label>
-              <input
-                type="text"
-                value={uVidRaw}
-                onChange={(e) => setUVidRaw(e.target.value)}
-                placeholder="e.g. https://assets.mixkit.co/videos/...mp4"
-                className="w-full glass-input rounded-xl p-3 text-xs text-white placeholder-slate-550 font-mono"
-              />
+
+              {/* Elegant Device Video Upload Zone */}
+              <div className="grid grid-cols-1 sm:grid-cols-10 gap-3.5 mt-1.5 mb-3">
+                <div className="sm:col-span-3 h-24 rounded-2xl overflow-hidden border border-white/10 bg-slate-900/60 flex flex-col items-center justify-center relative group">
+                  {uVidRaw ? (
+                    <>
+                      <video src={uVidRaw} className="w-full h-full object-cover opacity-75" muted loop playsInline />
+                      <button
+                        type="button"
+                        onClick={() => setUVidRaw("")}
+                        className="absolute top-1.5 right-1.5 bg-slate-950/80 hover:bg-red-500/80 text-white rounded-full p-1.5 transition-all text-[9.5px] border border-white/10 cursor-pointer"
+                        title="Clear video"
+                      >
+                        ✕
+                      </button>
+                      <div className="absolute inset-x-0 bottom-0 bg-slate-950/90 py-1 text-center text-[8.5px] font-mono text-cyan-400 font-semibold opacity-0 group-hover:opacity-100 transition-all">
+                        Video Loaded ✓
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center p-2">
+                      <span className="text-lg block">📹</span>
+                      <span className="text-[9px] font-mono text-slate-400 block font-bold leading-none mt-0.5">NO VIDEO</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="sm:col-span-7 flex flex-col justify-between space-y-1.5">
+                  <input
+                    type="text"
+                    value={uVidRaw}
+                    onChange={(e) => setUVidRaw(e.target.value)}
+                    placeholder="Paste MP4 URL or select from device below..."
+                    className="w-full glass-input rounded-xl p-2.5 text-xs text-white placeholder-slate-500 font-mono focus:ring-1 focus:ring-gold-accent"
+                  />
+                  
+                  <div className="flex gap-2">
+                    <label
+                      htmlFor="admin-update-video-uploader"
+                      className="flex-grow py-1.5 px-3 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-center text-[10px] font-bold uppercase tracking-wider border border-white/10 hover:border-white/25 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 shadow-md font-mono"
+                    >
+                      <Video className="w-4 h-4 text-cyan-400" />
+                      <span>Upload Device Video</span>
+                    </label>
+                  </div>
+                  
+                  <input
+                    type="file"
+                    id="admin-update-video-uploader"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (!file.type.startsWith("video/")) {
+                        alert("Please select a valid video file.");
+                        return;
+                      }
+                      if (file.size > 500 * 1024) {
+                        const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
+                        alert(`The video file you selected is too large (${sizeInMB}MB). \n\nStandard cloud databases (Firestore) restrict direct database storage to under 1MB per record (with base64 overhead, your actual video must be under 500KB).\n\nTo share larger or high-definition crop updates, please upload them to a hosting site (such as Cloud Storage, Dropbox, Vimeo, or YouTube) and paste the URL in the text input above, or use one of our curated feeding preset videos below!`);
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        setUVidRaw(event.target?.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </div>
+              </div>
 
               {/* Video attachments loops selection */}
               <div className="mt-2.5 bg-slate-950/40 p-2.5 rounded-xl border border-white/5">

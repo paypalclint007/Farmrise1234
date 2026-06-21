@@ -524,8 +524,28 @@ function DepositView() {
       const reader = new FileReader();
       reader.onload = (uploadEvent) => {
         if (uploadEvent.target?.result) {
-          setReceiptImage(uploadEvent.target.result as string);
-          setReceiptFileName(file.name);
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const MAX_WIDTH = 800;
+            let width = img.width;
+            let height = img.height;
+            if (width > MAX_WIDTH) {
+              height = Math.round((height * MAX_WIDTH) / width);
+              width = MAX_WIDTH;
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              // Optimize to JPEG-65% format which reduces sizes massively to around 60KB-120KB
+              const compressedBase64 = canvas.toDataURL("image/jpeg", 0.65);
+              setReceiptImage(compressedBase64);
+              setReceiptFileName(file.name);
+            }
+          };
+          img.src = uploadEvent.target?.result as string;
         }
       };
       reader.readAsDataURL(file);

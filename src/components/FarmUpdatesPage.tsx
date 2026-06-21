@@ -557,8 +557,9 @@ export default function FarmUpdatesPage() {
                               alert("Please select a valid video file.");
                               return;
                             }
-                            if (file.size > 25 * 1024 * 1024) {
-                              alert("Video file size should be under 25MB to ensure optimal performance.");
+                            if (file.size > 500 * 1024) {
+                              const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
+                              alert(`The video file you selected is too large (${sizeInMB}MB). \n\nStandard cloud databases (Firestore) restrict direct database storage to under 1MB per record (with base64 overhead, your actual video must be under 500KB). \n\nTo share larger or high-definition crop updates, please upload them to a hosting site (such as Cloud Storage, Dropbox, Vimeo, or YouTube) and paste the URL in the text input above, or use one of our curated feeding preset videos below!`);
                               return;
                             }
                             const reader = new FileReader();
