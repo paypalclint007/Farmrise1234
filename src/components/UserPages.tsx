@@ -4,7 +4,7 @@ import {
   Wallet, TrendingUp, Compass, Calendar, User, Share2, 
   ArrowDownCircle, ArrowUpCircle, CheckCircle, Clock, Percent,
   ChevronRight, ShieldCheck, AlertTriangle, HelpCircle, PlusCircle, Power,
-  Users, UserCheck, Copy, UploadCloud, Check, FileImage
+  Users, UserCheck, Copy, UploadCloud, Check, FileImage, RefreshCw
 } from "lucide-react";
 import { isMockAppwrite, testConnection, APPWRITE_CONFIG, verifyDepositsCollection, formatAppwriteEndpoint } from "../appwrite";
 import { motion } from "motion/react";
@@ -1565,8 +1565,47 @@ function ProfileSubTabs({ active }: { active: "profile" | "referral" | "withdraw
 
 // 6. Referral Page
 function ReferralView() {
-  const { currentUser, referrals, deposits, investments } = useFarm();
+  const { currentUser, referrals, deposits, investments, triggerManualSync } = useFarm();
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string>("Just now");
+  
   const code = currentUser?.referralCode || "RISE8349";
+
+  // Automatically refresh on mount and poll for updates every 8 seconds
+  useEffect(() => {
+    const updateTimeStr = () => {
+      const now = new Date();
+      setLastSyncTime(now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    };
+
+    const interval = setInterval(async () => {
+      try {
+        setIsSyncing(true);
+        await triggerManualSync();
+        updateTimeStr();
+      } catch (err) {
+        console.warn("Auto background check for referrals failed:", err);
+      } finally {
+        setTimeout(() => setIsSyncing(false), 600);
+      }
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [triggerManualSync]);
+
+  const handleManualSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      await triggerManualSync();
+      const now = new Date();
+      setLastSyncTime(now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    } catch (err) {
+      console.warn("Manual triggers fail during sync:", err);
+    } finally {
+      setTimeout(() => setIsSyncing(false), 800);
+    }
+  };
 
   const myReferrals = referrals.filter(r => r.referrerId === currentUser?.id || r.referrerId === `code_${currentUser?.referralCode?.toUpperCase()}` || r.referrerCode?.toUpperCase() === currentUser?.referralCode?.toUpperCase());
   
@@ -1620,9 +1659,25 @@ function ReferralView() {
 
   return (
     <div className="space-y-6 pb-24">
-      <div>
-        <h2 className="text-2xl font-bold font-display text-white">Affiliate Partner</h2>
-        <p className="text-xs text-slate-400 mt-1">Earn 5% direct commission on invited capital sponsors</p>
+      <div className="flex justify-between items-start">
+        <div className="text-left">
+          <h2 className="text-2xl font-bold font-display text-white">Affiliate Partner</h2>
+          <p className="text-xs text-slate-400 mt-1">Earn 5% direct commission on invited capital sponsors</p>
+        </div>
+        
+        {/* Dynamic Auto-Update Connection Heartbeat */}
+        <button 
+          onClick={handleManualSync}
+          disabled={isSyncing}
+          className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg border border-white/5 bg-slate-900/60 hover:bg-slate-900/90 transition text-[10px] font-mono text-slate-300 pointer-events-auto"
+        >
+          <span className="relative flex h-2 w-2 mr-0.5">
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isSyncing ? "bg-amber-400" : "bg-emerald-400"}`}></span>
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${isSyncing ? "bg-amber-500" : "bg-emerald-500"}`}></span>
+          </span>
+          <span>{isSyncing ? "Syncing..." : `Live (Synced ${lastSyncTime})`}</span>
+          <RefreshCw className={`w-3 h-3 text-slate-400 ml-0.5 ${isSyncing ? "animate-spin text-amber-400" : ""}`} />
+        </button>
       </div>
 
       <ProfileSubTabs active="referral" />

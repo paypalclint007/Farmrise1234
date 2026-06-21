@@ -212,7 +212,16 @@ function getSyncUsers(): any[] {
       const data = fs.readFileSync(USERS_SYNC_FILE, "utf8");
       const parsed = JSON.parse(data);
       if (Array.isArray(parsed)) {
-        return parsed;
+        const uniqueMap = new Map<string, any>();
+        parsed.forEach(u => {
+          if (u && u.email) {
+            const cleanEmail = u.email.toLowerCase().trim();
+            if (cleanEmail !== "") {
+              uniqueMap.set(cleanEmail, u);
+            }
+          }
+        });
+        return Array.from(uniqueMap.values());
       }
     }
   } catch (err) {

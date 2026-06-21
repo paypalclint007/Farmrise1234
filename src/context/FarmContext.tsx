@@ -68,6 +68,7 @@ interface FarmContextType {
   quickAddFunds: (amount: number) => Promise<void>;
   triggerMaturityCheck: () => Promise<void>;
   adjustUserWallet: (userId: string, fields: Partial<UserProfile>) => Promise<void>;
+  triggerManualSync: () => Promise<void>;
 }
 
 const FarmContext = createContext<FarmContextType | undefined>(undefined);
@@ -3284,6 +3285,14 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const triggerManualSync = async () => {
+    if (currentUser) {
+      await fetchAllData(currentUser);
+    } else {
+      await fetchPublicData();
+    }
+  };
+
   return (
     <FarmProviderValue {...{
       currentUser, plans, categories, deposits, investments, withdrawals, notifications, 
@@ -3293,7 +3302,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       createDeposit, createInvestment, withdrawMaturedInvestment, createWithdrawal, markNotificationRead,
       approveDeposit, rejectDeposit, approveWithdrawal, rejectWithdrawal,
       createOrUpdatePlan, createOrUpdateCategory, deletePlan, createFarmUpdate, editFarmUpdate, deleteFarmUpdate, banUser, adjustUserWallet, sendBroadcastNotification,
-      toggleAdminMode, quickAddFunds, triggerMaturityCheck, children
+      toggleAdminMode, quickAddFunds, triggerMaturityCheck, triggerManualSync, children
     }} />
   );
 };
