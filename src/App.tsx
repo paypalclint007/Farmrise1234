@@ -21,6 +21,8 @@ function MainAppShell() {
 
   const [isSplashActive, setSplashActive] = useState(true);
   const [notifPanelOpen, setNotifPanelOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
 
   // Splash Screen timer
   useEffect(() => {
@@ -29,6 +31,60 @@ function MainAppShell() {
     }, 2400);
     return () => clearTimeout(timer);
   }, [setSplashActive]);
+
+  // Track the Progressive Web App installation prompt
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      (window as any).deferredInstallPrompt = e;
+      
+      const isDismissed = localStorage.getItem("fr_pwa_banner_dismissed_v2");
+      if (!isDismissed) {
+        setShowInstallBanner(true);
+      }
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+
+    // If already launched inside standalone app mode, hide installation cues
+    if (window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone) {
+      setShowInstallBanner(false);
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    const promptEvent = deferredPrompt || (window as any).deferredInstallPrompt;
+    if (!promptEvent) {
+      // Manual guidance when prompt is not available (such as Safari iOS)
+      alert(
+        "📲 To Download & Save FarmRise on Your Device:\n\n" +
+        "• On Google Chrome (Android/PC): Tap the three dots [⋮] in your browser address bar and select 'Install' or 'Add to Home screen'.\n" +
+        "• On Apple Safari (iPhone/iPad): Tap the 'Share' button in your browser toolbar, scroll down, and select 'Add to Home Screen'."
+      );
+      return;
+    }
+    
+    try {
+      promptEvent.prompt();
+      const { outcome } = await promptEvent.userChoice;
+      console.log(`[FarmRise PWA] User selection: ${outcome}`);
+      setDeferredPrompt(null);
+      (window as any).deferredInstallPrompt = null;
+      setShowInstallBanner(false);
+    } catch (err) {
+      console.warn("[FarmRise PWA] Dynamic installation prompt failed:", err);
+    }
+  };
+
+  const dismissInstallBanner = () => {
+    localStorage.setItem("fr_pwa_banner_dismissed_v2", "true");
+    setShowInstallBanner(false);
+  };
 
   if (isSplashActive) {
     return <SplashScreen />;
@@ -283,6 +339,40 @@ function MainAppShell() {
 
         {/* Dynamic content area */}
         <main className="flex-1 overflow-y-auto px-6 pt-6 pb-24 md:p-8 bg-gradient-to-b from-[#081120] to-[#040912]">
+          {showInstallBanner && (
+            <div className="mb-6 max-w-7xl mx-auto">
+              <div className="relative overflow-hidden p-4 rounded-3xl bg-gradient-to-r from-amber-500/10 via-[#F5B300]/15 to-green-500/10 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/10 rounded-full filter blur-2xl pointer-events-none" />
+                <div className="flex items-center gap-3.5 z-10 text-center sm:text-left flex-col sm:flex-row">
+                  <div className="w-11 h-11 bg-gradient-to-br from-[#F5B300] to-yellow-500 rounded-2xl text-slate-950 shrink-0 font-display font-extrabold text-sm shadow-md flex items-center justify-center animate-pulse">
+                    📲
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white font-display">Install FarmRise App</h4>
+                    <p className="text-[11px] text-white/70 mt-0.5 leading-relaxed max-w-lg">
+                      Save/download the application to your mobile device or Chrome screen to receive instant critical incubation notifications and real-time audio sound chimes.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2.5 shrink-0 z-10 w-full sm:w-auto justify-center sm:justify-end">
+                  <button
+                    onClick={handleInstallApp}
+                    className="py-2.5 px-4 bg-gold-accent hover:bg-yellow-500 text-slate-950 font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5"
+                  >
+                    Install / Download
+                  </button>
+                  <button
+                    onClick={dismissInstallBanner}
+                    className="p-2.5 bg-white/5 border border-white/10 hover:bg-white/10 text-white rounded-xl transition-all cursor-pointer text-xs"
+                    aria-label="Dismiss banner"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <AnimatePresence mode="wait">
             <motion.div
               key={currentPage}

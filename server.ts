@@ -3,6 +3,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import fs from "fs";
+import { initializeAppwriteInfra } from "./src/appwriteInit";
 
 dotenv.config();
 
@@ -11,7 +13,6 @@ try {
   const envProjectId = process.env.VITE_APPWRITE_PROJECT_ID;
   if (envProjectId) {
     const configPath = path.join(process.cwd(), "src", "appwrite-config.json");
-    const fs = require("fs");
     let fileConfig: any = {};
     if (fs.existsSync(configPath)) {
       try {
@@ -89,7 +90,6 @@ app.post("/api/appwrite/init", async (req, res) => {
       return res.status(400).json({ error: "Missing required configuration fields. Endpoint, Project ID, API Key, and Database ID are all required." });
     }
 
-    const { initializeAppwriteInfra } = require("./src/appwriteInit");
     const result = await initializeAppwriteInfra({
       endpoint,
       projectId,
@@ -143,7 +143,6 @@ app.post("/api/appwrite/save-config", async (req, res) => {
     };
 
     const configPath = path.join(process.cwd(), "src", "appwrite-config.json");
-    const fs = require("fs");
     fs.writeFileSync(configPath, JSON.stringify(finalConfig, null, 2), "utf8");
     
     console.log("Persistent Appwrite config updated on disk:", finalConfig);
@@ -158,7 +157,6 @@ app.post("/api/appwrite/save-config", async (req, res) => {
 app.get("/api/appwrite/config", (req, res) => {
   try {
     const configPath = path.join(process.cwd(), "src", "appwrite-config.json");
-    const fs = require("fs");
     let fileConfig: any = {};
     if (fs.existsSync(configPath)) {
       try {
@@ -204,10 +202,118 @@ app.get("/api/appwrite/config", (req, res) => {
   }
 });
 
+// Local Persistent User Profile synchronization ledger
+const USERS_SYNC_FILE = path.join(process.cwd(), "src", "users-sync.json");
+
+// Helper to load synchronized user profiles
+function getSyncUsers(): any[] {
+  try {
+    if (fs.existsSync(USERS_SYNC_FILE)) {
+      const data = fs.readFileSync(USERS_SYNC_FILE, "utf8");
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to load users-sync.json:", err);
+  }
+  return [];
+}
+
+// Helper to save synchronized user profiles
+function saveSyncUsers(users: any[]) {
+  try {
+    fs.writeFileSync(USERS_SYNC_FILE, JSON.stringify(users, null, 2), "utf8");
+  } catch (err) {
+    console.error("Failed to write to users-sync.json:", err);
+  }
+}
+
+// REST route to synchronize user profiles
+app.post("/api/sync-user-profile", (req, res) => {
+  try {
+    const profile = req.body;
+    if (!profile || (!profile.id && !profile.email)) {
+      return res.status(400).json({ error: "Invalid user profile payload." });
+    }
+
+    const users = getSyncUsers();
+    const existingIndex = users.findIndex(
+      u => (profile.id && u.id === profile.id) || (profile.email && u.email?.toLowerCase() === profile.email.toLowerCase())
+    );
+
+    const mappedProfile = {
+      id: profile.id || profile.$id,
+      email: profile.email || "",
+      name: profile.name || profile.fullname || "Sovereign Investor",
+      fullname: profile.fullname || profile.name || "Sovereign Investor",
+      phoneNumber: profile.phoneNumber || profile.phone || "",
+      phone: profile.phone || profile.phoneNumber || "",
+      balance: profile.balance !== undefined ? Number(profile.balance) : (profile.walletBalance !== undefined ? Number(profile.walletBalance) : 0),
+      walletBalance: profile.walletBalance !== undefined ? Number(profile.walletBalance) : (profile.balance !== undefined ? Number(profile.balance) : 0),
+      totalInvested: profile.totalInvested !== undefined ? Number(profile.totalInvested) : 0,
+      totalEarnings: profile.totalEarnings !== undefined ? Number(profile.totalEarnings) : 0,
+      referralBonus: profile.referralBonus !== undefined ? Number(profile.referralBonus) : 0,
+      totalProfit: profile.totalProfit !== undefined ? Number(profile.totalProfit) : 0,
+      referralCode: profile.referralCode || ("RISE" + Math.floor(Math.random() * 9000 + 1000)),
+      referredBy: profile.referredBy || "",
+      isAdmin: profile.isAdmin !== undefined ? Boolean(profile.isAdmin) : (profile.email?.toLowerCase() === "paypalclint007@gmail.com"),
+      registeredAt: profile.registeredAt || profile.createdAt || new Date().toISOString(),
+      createdAt: profile.createdAt || profile.registeredAt || new Date().toISOString(),
+      isBanned: profile.isBanned !== undefined ? Boolean(profile.isBanned) : false
+    };
+
+    if (existingIndex >= 0) {
+      // Merge properties safely
+      users[existingIndex] = {
+        ...users[existingIndex],
+        ...mappedProfile
+      };
+    } else {
+      users.push(mappedProfile);
+    }
+
+    saveSyncUsers(users);
+    return res.json({ success: true, user: mappedProfile });
+  } catch (err: any) {
+    console.error("Error inside sync-user-profile endpoint:", err);
+    return res.status(500).json({ error: err.message || "Failed to sync user profile." });
+  }
+});
+
+// REST route to retrieve synchronized user profiles (Admin)
+app.get("/api/admin/users", (req, res) => {
+  try {
+    const users = getSyncUsers();
+    return res.json({ success: true, users });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to list synchronized user profiles." });
+  }
+});
+
 // Appwrite client request proxy to bypass CORS sandbox restrictions
 app.all("/api/appwrite/*", async (req, res) => {
   try {
-    let appwriteEndpoint = process.env.VITE_APPWRITE_ENDPOINT || "https://cloud.appwrite.io/v1";
+    let appwriteEndpoint = process.env.VITE_APPWRITE_ENDPOINT || "";
+    
+    // Attempt to load from appwrite-config.json first
+    try {
+      const configPath = path.join(process.cwd(), "src", "appwrite-config.json");
+      if (fs.existsSync(configPath)) {
+        const fileContent = fs.readFileSync(configPath, "utf8");
+        const fileConfig = JSON.parse(fileContent);
+        if (fileConfig.endpoint) {
+          appwriteEndpoint = fileConfig.endpoint;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to retrieve Appwrite endpoint from appwrite-config.json inside proxy:", e);
+    }
+
+    if (!appwriteEndpoint) {
+      appwriteEndpoint = "https://cloud.appwrite.io/v1";
+    }
     
     // Safeguard to prevent self-referencing loop if the env var is set to a relative or proxy path
     if (

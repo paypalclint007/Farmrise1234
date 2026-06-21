@@ -96,3 +96,12 @@ export interface Referral {
   commissionPaid: number;
   createdAt: string;
 }
+
+export interface LivestockCategory {
+  id: string;
+  name: string;
+  type: string;
+  imageUrl: string;
+  description: string;
+  emoji: string;
+}

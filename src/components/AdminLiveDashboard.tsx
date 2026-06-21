@@ -62,7 +62,7 @@ export default function AdminLiveDashboard() {
   // API aggregation method
   const fetchLiveStatsFromAppwrite = useCallback(async () => {
     setIsSyncing(true);
-    addLog("Polling database live collections via Appwrite client...", "info");
+    addLog("Polling database live collections via Firebase/Firestore client...", "info");
     
     try {
       let fetchedUsersDocs: any[] = [];
@@ -81,8 +81,8 @@ export default function AdminLiveDashboard() {
           addLog("Offline store retrieval failed.", "error");
         }
       } else {
-        // Direct Query Appwrite client
-        addLog(`Initiating listDocuments to database: ${APPWRITE_CONFIG.databaseId}`, "info");
+        // Direct Query Firebase client
+        addLog(`Initiating listDocuments to Firebase Firestore`, "info");
 
         // 1. Fetch Users
         try {
@@ -141,6 +141,21 @@ export default function AdminLiveDashboard() {
         }
       }
 
+      // Clean and case-insensitive deduplicate of user database entries by email to ensure accurate sponsors count
+      const uniqueUsersMap = new Map<string, any>();
+      fetchedUsersDocs.forEach(u => {
+        if (u && u.email) {
+          const emailKey = u.email.toLowerCase().trim();
+          if (emailKey !== "") {
+            const existing = uniqueUsersMap.get(emailKey);
+            if (!existing || (u.isAdmin && !existing.isAdmin)) {
+              uniqueUsersMap.set(emailKey, u);
+            }
+          }
+        }
+      });
+      fetchedUsersDocs = Array.from(uniqueUsersMap.values());
+
       // Live aggregations
       const activeUsers = fetchedUsersDocs.filter(u => !u.isBanned).length;
       const bannedUsers = fetchedUsersDocs.filter(u => u.isBanned).length;
@@ -196,7 +211,7 @@ export default function AdminLiveDashboard() {
       addLog("Live dashboard statistics aggregates updated successfully.", "success");
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Failed to parse live Appwrite datasets");
+      setError(err.message || "Failed to parse live Firebase/Firestore datasets");
       addLog(`Aggregation error: ${err.message || String(err)}`, "error");
     } finally {
       setIsSyncing(false);
@@ -233,7 +248,7 @@ export default function AdminLiveDashboard() {
             </h2>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Connected live to production Appwrite Database. Real-time updates automatically feed this console.
+            Connected live to production Firebase/Firestore Database. Real-time updates automatically feed this console.
           </p>
         </div>
 
@@ -301,7 +316,7 @@ export default function AdminLiveDashboard() {
         <div className="flex items-center gap-4 text-xs font-mono">
           <div className="text-right">
             <span className="text-[10px] text-slate-500 block">Endpoint Type</span>
-            <span className="text-slate-300 font-semibold">{isMockAppwrite ? "localStorage.mock" : "Appwrite Direct API"}</span>
+            <span className="text-slate-300 font-semibold">{isMockAppwrite ? "localStorage.mock" : "Firebase Firestore Native"}</span>
           </div>
           <div className="text-right">
             <span className="text-[10px] text-slate-500 block">Last Cloud Sync</span>
@@ -534,7 +549,7 @@ export default function AdminLiveDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
             </span>
             <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-extrabold">
-              Appwrite Direct API Request Stream Log
+              Firebase/Firestore direct API Request Stream Log
             </h3>
           </div>
           <button 

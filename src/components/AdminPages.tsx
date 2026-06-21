@@ -9,7 +9,7 @@ import {
   Calendar, Clock, CheckCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { InvestmentPlan, UserProfile, FarmUpdate } from "../types";
+import { InvestmentPlan, UserProfile, FarmUpdate, LivestockCategory } from "../types";
 
 // Curated Real High-Quality Farm Photos (Unsplash)
 const PHOTO_PRESETS = [
@@ -587,6 +587,20 @@ function UsersManagementView() {
 function DepositApprovalView() {
   const { deposits, approveDeposit, rejectDeposit, navigate } = useFarm();
   const [activeTab, setActiveTab] = useState<"pending" | "approved" | "rejected">("pending");
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [scale, setScale] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const handleImagePreview = (imgUrl: string) => {
+    setPreviewImage(imgUrl);
+    setScale(1);
+    setRotation(0);
+  };
 
   const filteredDeposits = deposits.filter((d) => d.status === activeTab);
 
@@ -664,14 +678,20 @@ function DepositApprovalView() {
               {dep.proofImg && (
                 <div className="w-full h-44 rounded-xl overflow-hidden border border-white/5 relative group bg-black">
                   <img src={dep.proofImg} alt="Proof of wire payment" referrerPolicy="no-referrer" className="w-full h-full object-cover opacity-80" />
-                  <a
-                    href={dep.proofImg}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="absolute bottom-3 right-3 bg-slate-950/80 hover:bg-slate-950 text-white font-mono text-[9px] uppercase tracking-wider px-3 py-1.5 rounded-lg border border-white/10 transition-all z-10"
+                  <button
+                    type="button"
+                    onClick={() => handleImagePreview(dep.proofImg!)}
+                    className="absolute inset-0 w-full h-full bg-black/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center text-white font-semibold text-xs gap-1.5 cursor-pointer z-10"
+                  >
+                    <span>Click to Zoom / Expand Document 🔍</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleImagePreview(dep.proofImg!)}
+                    className="absolute bottom-3 right-3 bg-slate-950/80 hover:bg-slate-900 text-gold-accent font-mono text-[9px] uppercase tracking-wider px-3 py-1.5 rounded-lg border border-white/10 transition-all z-20 cursor-pointer"
                   >
                     View Original File ↗
-                  </a>
+                  </button>
                 </div>
               )}
 
@@ -679,21 +699,25 @@ function DepositApprovalView() {
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => {
-                      if (confirm(`Approve of ₦${dep.amount.toLocaleString()} NGN and credit balance?`)) {
-                        approveDeposit(dep.id);
-                      }
+                      setConfirmConfig({
+                        title: "Credit User Portfolio",
+                        message: `Are you sure you want to approve this receipt of ₦${dep.amount.toLocaleString()} and instantly credit funds to the user's account balance?`,
+                        onConfirm: () => approveDeposit(dep.id)
+                      });
                     }}
-                    className="py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs uppercase flex items-center justify-center gap-1.5 transition-all"
+                    className="py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                   >
                     <Check className="w-4 h-4" /> Credit Funds
                   </button>
                   <button
                     onClick={() => {
-                      if (confirm("Deny/Reject this deposit wire proof?")) {
-                        rejectDeposit(dep.id);
-                      }
+                      setConfirmConfig({
+                        title: "Decline / Reject Proof",
+                        message: `Are you sure you want to reject/decline this deposit request of ₦${dep.amount.toLocaleString()} NGN? The user will be notified in their bulletins.`,
+                        onConfirm: () => rejectDeposit(dep.id)
+                      });
                     }}
-                    className="py-2.5 rounded-xl bg-red-950/40 text-red-400 font-bold text-xs uppercase hover:bg-red-950/80 flex items-center justify-center gap-1.5 transition-all border border-red-500/20"
+                    className="py-2.5 rounded-xl bg-red-950/40 text-red-400 font-bold text-xs uppercase hover:bg-red-950/80 flex items-center justify-center gap-1.5 transition-all border border-red-500/20 cursor-pointer"
                   >
                     <X className="w-4 h-4" /> Decline Proof
                   </button>
@@ -703,6 +727,177 @@ function DepositApprovalView() {
           ))
         )}
       </div>
+
+      {/* Interactive High Definition Image Viewer Overlay Modal */}
+      <AnimatePresence>
+        {previewImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 backdrop-blur-md z-[200] flex flex-col items-center justify-center p-4 md:p-8"
+            onClick={() => setPreviewImage(null)}
+          >
+            {/* Modal Controls Bar */}
+            <motion.div
+              initial={{ y: -20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -20, opacity: 0 }}
+              className="w-full max-w-4xl bg-slate-900/95 border border-white/5 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 mb-4 z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs md:text-sm font-bold text-white flex items-center gap-1.5 font-display">
+                  ✨ High-Definition Document Lens
+                </span>
+              </div>
+
+              {/* Functional adjustments */}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setScale((s) => Math.max(0.25, s - 0.25))}
+                  className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-mono font-bold border border-white/5 cursor-pointer"
+                  title="Zoom Out"
+                >
+                  Zoom -
+                </button>
+                <span className="text-xs font-mono text-slate-400 min-w-[3rem] text-center">
+                  {Math.round(scale * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setScale((s) => Math.min(4, s + 0.25))}
+                  className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-mono font-bold border border-white/5 cursor-pointer"
+                  title="Zoom In"
+                >
+                  Zoom +
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRotation((r) => (r + 90) % 360)}
+                  className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-mono font-bold border border-white/5 cursor-pointer flex items-center gap-1"
+                  title="Rotate Image"
+                >
+                  Rotate ⟳
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScale(1);
+                    setRotation(0);
+                  }}
+                  className="px-1.5 py-1.5 text-slate-400 hover:text-white text-xs font-mono"
+                >
+                  Reset
+                </button>
+              </div>
+
+              {/* Close & Download Actions */}
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewImage}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3.5 py-1.5 bg-[#F5B300] hover:bg-amber-500 text-slate-950 rounded-lg text-xs font-bold uppercase cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Open Direct ↗
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewImage(null)}
+                  className="px-3.5 py-1.5 bg-red-950 text-red-400 hover:bg-red-900 hover:text-white rounded-lg text-xs font-bold uppercase border border-red-500/20 cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+
+            {/* Live Interactive Image Box */}
+            <div 
+              className="flex-1 w-full max-w-4xl flex items-center justify-center overflow-auto rounded-3xl bg-slate-950/60 border border-white/5 p-4 relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="absolute inset-0 bg-grid-pattern opacity-5 pointer-events-none"></div>
+              <div 
+                className="transition-transform duration-200 ease-out select-none flex items-center justify-center"
+                style={{ 
+                  transform: `scale(${scale}) rotate(${rotation}deg)`,
+                }}
+              >
+                <img
+                  src={previewImage}
+                  alt="High Resolution Wire Proof"
+                  referrerPolicy="no-referrer"
+                  className="max-h-[70vh] md:max-h-[65vh] w-auto h-auto object-contain rounded-xl shadow-2xl border border-white/10"
+                  draggable="false"
+                />
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-500 mt-3 font-mono text-center">
+              💡 Pro Tip: Is the receipt turned sideways/landscape? Click the "Rotate ⟳" button to turn it! Click "Open Direct ↗" to view full size in high-res link.
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Interactive Visual Confirmation Dialog Overlay for sandboxed iframes compatibility */}
+      <AnimatePresence>
+        {confirmConfig && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4"
+            onClick={() => setConfirmConfig(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              className="bg-slate-900 border border-white/10 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-amber-500/10 rounded-2xl shrink-0">
+                  <AlertTriangle className="w-6 h-6 text-[#F5B300]" />
+                </div>
+                <div className="space-y-1 text-left">
+                  <h3 className="text-base font-bold text-white font-display">
+                    {confirmConfig.title || "Confirm Administrative Action"}
+                  </h3>
+                  <p className="text-xs text-white/70 leading-relaxed font-sans mt-1">
+                    {confirmConfig.message}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmConfig(null)}
+                  className="py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-semibold text-xs transition-all border border-white/11 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    confirmConfig.onConfirm();
+                    setConfirmConfig(null);
+                  }}
+                  className="py-2.5 rounded-xl bg-[#F5B300] hover:bg-yellow-500 text-slate-950 font-bold text-xs uppercase tracking-wide transition-all cursor-pointer"
+                >
+                  Confirm Proceed
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -711,6 +906,11 @@ function DepositApprovalView() {
 function WithdrawalApprovalView() {
   const { withdrawals, approveWithdrawal, rejectWithdrawal, navigate } = useFarm();
   const [activeTab, setActiveTab] = useState<"pending" | "approved" | "rejected">("pending");
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   const filteredWithdrawals = withdrawals.filter((w) => w.status === activeTab);
 
@@ -786,9 +986,11 @@ function WithdrawalApprovalView() {
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => {
-                      if (confirm(`Confirm you dispatched money bank payment to destination: ${wth.accountDetails}?`)) {
-                        approveWithdrawal(wth.id);
-                      }
+                      setConfirmConfig({
+                        title: "Confirm Settle Wire",
+                        message: `Are you completely sure you have processed the NGN bank payment of ₦${wth.amount.toLocaleString()} to: ${wth.accountDetails}?`,
+                        onConfirm: () => approveWithdrawal(wth.id)
+                      });
                     }}
                     className="py-2 rounded-xl bg-gold-accent text-slate-900 font-bold text-xs uppercase flex items-center justify-center gap-1 filter hover:brightness-110 transition-all cursor-pointer"
                   >
@@ -796,9 +998,11 @@ function WithdrawalApprovalView() {
                   </button>
                   <button
                     onClick={() => {
-                      if (confirm("Deny, abort and instantly refund balance back to user profile?")) {
-                        rejectWithdrawal(wth.id);
-                      }
+                      setConfirmConfig({
+                        title: "Declined & Refund Payout",
+                        message: `Are you sure you want to decline this payout request of ₦${wth.amount.toLocaleString()} NGN? The funds will be instantly refunded to the user's active agricultural yield balance.`,
+                        onConfirm: () => rejectWithdrawal(wth.id)
+                      });
                     }}
                     className="py-2 rounded-xl bg-red-950/45 text-red-405 font-bold text-xs uppercase hover:bg-red-950 flex items-center justify-center gap-1 transition-all cursor-pointer border border-red-500/10"
                   >
@@ -810,14 +1014,73 @@ function WithdrawalApprovalView() {
           ))
         )}
       </div>
+
+      {/* Interactive Visual Confirmation Dialog Overlay for sandboxed iframes compatibility */}
+      <AnimatePresence>
+        {confirmConfig && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4"
+            onClick={() => setConfirmConfig(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              className="bg-slate-900 border border-white/10 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-amber-500/10 rounded-2xl shrink-0">
+                  <AlertTriangle className="w-6 h-6 text-[#F5B300]" />
+                </div>
+                <div className="space-y-1 text-left">
+                  <h3 className="text-base font-bold text-white font-display">
+                    {confirmConfig.title || "Confirm Administrative Action"}
+                  </h3>
+                  <p className="text-xs text-white/70 leading-relaxed font-sans mt-1">
+                    {confirmConfig.message}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmConfig(null)}
+                  className="py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-semibold text-xs transition-all border border-white/11 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    confirmConfig.onConfirm();
+                    setConfirmConfig(null);
+                  }}
+                  className="py-2.5 rounded-xl bg-[#F5B300] hover:bg-yellow-500 text-slate-950 font-bold text-xs uppercase tracking-wide transition-all cursor-pointer"
+                >
+                  Confirm Proceed
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 // 5. Investment Plans Management Board (Add, Edit, Delete, Enable/Disable)
 function PlansManagementView() {
-  const { plans, createOrUpdatePlan, deletePlan, navigate } = useFarm();
+  const { plans, categories, createOrUpdatePlan, createOrUpdateCategory, deletePlan, navigate } = useFarm();
   
+  // Tab switcher
+  const [activeAdminTab, setActiveAdminTab] = useState<"plans" | "categories">("plans");
+
   // Package Builder Form state
   const [pId, setPId] = useState("");
   const [pName, setPName] = useState("");
@@ -831,6 +1094,59 @@ function PlansManagementView() {
   const [pStatus, setPStatus] = useState<"active" | "inactive">("active");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Category Form State
+  const [catId, setCatId] = useState("");
+  const [catName, setCatName] = useState("");
+  const [catType, setCatType] = useState("Chicken");
+  const [catEmoji, setCatEmoji] = useState("🐔");
+  const [catImg, setCatImg] = useState("");
+  const [catDesc, setCatDesc] = useState("");
+  const [isCatSubmitting, setIsCatSubmitting] = useState(false);
+
+  const handleCategorySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!catName || !catEmoji || !catImg || !catDesc) {
+      alert("Please specify all category details.");
+      return;
+    }
+    setIsCatSubmitting(true);
+    const draftId = catId || "category_" + Date.now();
+    const model: LivestockCategory = {
+      id: draftId,
+      name: catName,
+      type: catType,
+      emoji: catEmoji,
+      imageUrl: catImg,
+      description: catDesc
+    };
+
+    try {
+      await createOrUpdateCategory(model);
+      alert(`Livestock Category '${catName}' successfully deployed!`);
+      // Reset state
+      setCatId("");
+      setCatName("");
+      setCatType("Chicken");
+      setCatEmoji("🐔");
+      setCatImg("");
+      setCatDesc("");
+    } catch (err: any) {
+      alert(`Failed to save category blueprint: ${err.message || String(err)}`);
+    } finally {
+      setIsCatSubmitting(false);
+    }
+  };
+
+  const handleSelectCategoryToEdit = (cat: LivestockCategory) => {
+    setCatId(cat.id);
+    setCatName(cat.name);
+    setCatType(cat.type);
+    setCatEmoji(cat.emoji);
+    setCatImg(cat.imageUrl);
+    setCatDesc(cat.description);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const handlePlanSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -911,227 +1227,548 @@ function PlansManagementView() {
         <button onClick={() => navigate("admin-dashboard")} className="text-xs text-gold-accent font-semibold hover:underline flex items-center gap-1">
           ← Back Control Center
         </button>
-        <h2 className="text-2xl font-black font-display text-white mt-1">Farm Blueprints</h2>
-        <p className="text-xs text-slate-400">Deploy, edit, activate/deactivate or delete broiler chicken Yards or pig piggies blueprints</p>
+        <h2 className="text-2xl font-black font-display text-white mt-1">Farm Management Board</h2>
+        <p className="text-xs text-slate-400">Configure investment plans blueprints, manage livestock sectors, edit featured pictures and descriptions</p>
       </div>
 
-      {/* Package Form */}
-      <form onSubmit={handlePlanSubmit} className="glass-panel p-5 rounded-2xl space-y-4 border border-gold-accent/15 bg-slate-950/20">
-        <div className="flex justify-between items-center border-b border-white/5 pb-3">
-          <h3 className="text-xs font-mono uppercase tracking-wider text-gold-accent font-bold">
-            {pId ? "🛠️ Edit Farming Plan Blueprint" : "➕ Deploy Farming Plan Blueprint"}
-          </h3>
-          {pId && (
-            <button
-              type="button"
-              onClick={() => {
-                setPId(""); setPName(""); setPMin(""); setPMax(""); setPYield(""); setPDays(""); setPImg(""); setPDesc(""); setPStatus("active");
-              }}
-              className="text-[10px] font-mono hover:text-white text-slate-400 uppercase font-bold"
-            >
-              Clear edit mode [X]
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3.5">
-          <div className="col-span-2 sm:col-span-1">
-            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Plan Package Title</label>
-            <input
-              type="text"
-              required
-              value={pName}
-              onChange={(e) => setPName(e.target.value)}
-              placeholder="e.g. Broiler Batch Grow"
-              className="w-full glass-input rounded-xl p-2.5 text-xs text-white"
-            />
-          </div>
-
-          <div className="col-span-2 sm:col-span-1">
-            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Livestock Class</label>
-            <select
-              value={pType}
-              onChange={(e: any) => setPType(e.target.value)}
-              className="w-full bg-slate-950 border border-white/10 rounded-xl p-2.5 text-xs text-white"
-            >
-              <option value="Chicken">🐔 Chicken Broilers Setup</option>
-              <option value="Pig">🐷 Pigs Growth Setup</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Profit Return Yield (%)</label>
-            <input
-              type="number"
-              required
-              value={pYield}
-              onChange={(e) => setPYield(e.target.value)}
-              placeholder="e.g. 20"
-              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Duration (Term Days)</label>
-            <input
-              type="number"
-              required
-              value={pDays}
-              onChange={(e) => setPDays(e.target.value)}
-              placeholder="e.g. 30"
-              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Min Sponsor Limit (₦)</label>
-            <input
-              type="number"
-              required
-              value={pMin}
-              onChange={(e) => setPMin(e.target.value)}
-              placeholder="e.g. 3000"
-              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Max Sponsor Limit (₦)</label>
-            <input
-              type="number"
-              required
-              value={pMax}
-              onChange={(e) => setPMax(e.target.value)}
-              placeholder="e.g. 150000"
-              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
-            />
-          </div>
-
-          <div className="col-span-2">
-            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Illustration Photo URL</label>
-            <input
-              type="text"
-              required
-              value={pImg}
-              onChange={(e) => setPImg(e.target.value)}
-              placeholder="https://images.unsplash.com/photo-..."
-              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
-            />
-          </div>
-
-          <div className="col-span-2 sm:col-span-1">
-            <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Plan Initial Status</label>
-            <select
-              value={pStatus}
-              onChange={(e: any) => setPStatus(e.target.value)}
-              className="w-full bg-slate-950 border border-white/10 rounded-xl p-2.5 text-xs text-white"
-            >
-              <option value="active">Active (Visible to user sponsors)</option>
-              <option value="inactive">Inactive (Disabled / Hidden)</option>
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Detailed Blueprint Description</label>
-          <textarea
-            required
-            rows={3}
-            value={pDesc}
-            onChange={(e) => setPDesc(e.target.value)}
-            placeholder="Discuss veterinary monitoring parameters, live feeding audits protocols, export channels and security..."
-            className="w-full glass-input rounded-xl p-2.5 text-xs leading-relaxed text-white"
-          />
-        </div>
-
+      {/* Tab Switcher */}
+      <div className="flex border-b border-white/5 pb-2">
         <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full py-3 bg-gold-accent hover:bg-yellow-500 disabled:opacity-50 text-slate-950 font-black rounded-xl text-xs uppercase tracking-widest transition-all cursor-pointer shadow-md flex items-center justify-center gap-1"
+          type="button"
+          onClick={() => setActiveAdminTab("plans")}
+          className={`px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all duration-300 border-b-2 rounded-t-lg ${
+            activeAdminTab === "plans"
+              ? "text-gold-accent border-gold-accent bg-slate-950/20"
+              : "text-slate-400 border-transparent hover:text-white"
+          }`}
         >
-          {isSubmitting ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : pId ? (
-            "Update Operational Blueprint"
-          ) : (
-            "Deploy Live Package Blueprint"
-          )}
+          📈 Investment Plans ({plans.length})
         </button>
-      </form>
+        <button
+          type="button"
+          onClick={() => setActiveAdminTab("categories")}
+          className={`px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all duration-300 border-b-2 rounded-t-lg ml-2 ${
+            activeAdminTab === "categories"
+              ? "text-gold-accent border-gold-accent bg-slate-950/20"
+              : "text-slate-400 border-transparent hover:text-white"
+          }`}
+        >
+          📂 Livestock Categories ({(categories || []).length})
+        </button>
+      </div>
 
-      {/* Plans List */}
-      <div className="space-y-3 pt-2">
-        <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold">Current System Blueprints ({plans.length})</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {plans.map((p) => {
-            const isPlanDisabled = p.status === "inactive";
-            return (
-              <div 
-                key={p.id} 
-                className={`glass-panel p-4 rounded-2xl flex flex-col justify-between border transition-all ${
-                  isPlanDisabled ? "border-amber-500/20 bg-slate-950/40 opacity-70" : "hover:border-white/10"
-                }`}
-              >
-                <div className="flex gap-3 mb-4">
-                  <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-white/10 bg-black">
-                    <img src={p.imageUrl} alt={p.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+      {activeAdminTab === "categories" ? (
+        <div className="space-y-6">
+          {/* Category Form */}
+          <form onSubmit={handleCategorySubmit} className="glass-panel p-5 rounded-2xl space-y-4 border border-gold-accent/15 bg-slate-950/20">
+            <div className="flex justify-between items-center border-b border-white/5 pb-3">
+              <h3 className="text-xs font-mono uppercase tracking-wider text-gold-accent font-bold">
+                {catId ? "🛠️ Edit Featured Category Picture & Details" : "➕ Create Livestock Category"}
+              </h3>
+              {catId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatId(""); setCatName(""); setCatType("Chicken"); setCatEmoji("🐔"); setCatImg(""); setCatDesc("");
+                  }}
+                  className="text-[10px] font-mono hover:text-white text-slate-400 uppercase font-bold"
+                >
+                  Clear edit mode [X]
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3.5">
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Category Display Name</label>
+                <input
+                  type="text"
+                  required
+                  value={catName}
+                  onChange={(e) => setCatName(e.target.value)}
+                  placeholder="e.g. Chicken Farming"
+                  className="w-full glass-input rounded-xl p-2.5 text-xs text-white"
+                />
+              </div>
+
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Livestock Type / Key</label>
+                <select
+                  value={catType}
+                  onChange={(e) => setCatType(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 rounded-xl p-2.5 text-xs text-white"
+                >
+                  <option value="Chicken">🐔 Chicken</option>
+                  <option value="Pig">🐖 Pig / Swine</option>
+                  <option value="General">📡 General / Logistics</option>
+                </select>
+              </div>
+
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Category Emoji</label>
+                <input
+                  type="text"
+                  required
+                  value={catEmoji}
+                  onChange={(e) => setCatEmoji(e.target.value)}
+                  placeholder="e.g. 🐔"
+                  className="w-full glass-input rounded-xl p-2.5 text-xs text-white"
+                />
+              </div>
+
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold font-bold">Featured Cover Image URL</label>
+                <input
+                  type="text"
+                  required
+                  value={catImg}
+                  onChange={(e) => setCatImg(e.target.value)}
+                  placeholder="Paste cover URL or upload below..."
+                  className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white placeholder-slate-500"
+                />
+              </div>
+
+              {/* Upload image for category */}
+              <div className="col-span-2">
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Upload Featured Category Cover Photo</label>
+                <div className="flex gap-2 items-center">
+                  <label
+                    htmlFor="category-file-uploader"
+                    className="py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider border border-white/10 hover:border-white/25 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+                  >
+                    <ImageIcon className="w-4 h-4 text-gold-accent" />
+                    <span>Upload From Device</span>
+                  </label>
+                  <input
+                    type="file"
+                    id="category-file-uploader"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        const img = new Image();
+                        img.onload = () => {
+                          const canvas = document.createElement("canvas");
+                          const MAX_WIDTH = 800;
+                          let width = img.width;
+                          let height = img.height;
+                          if (width > MAX_WIDTH) {
+                            height = Math.round((height * MAX_WIDTH) / width);
+                            width = MAX_WIDTH;
+                          }
+                          canvas.width = width;
+                          canvas.height = height;
+                          const ctx = canvas.getContext("2d");
+                          if (ctx) {
+                            ctx.drawImage(img, 0, 0, width, height);
+                            const compressedBase64 = canvas.toDataURL("image/jpeg", 0.75);
+                            setCatImg(compressedBase64);
+                          }
+                        };
+                        img.src = event.target?.result as string;
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                  {catImg && (
+                    <div className="flex items-center gap-2">
+                      <img src={catImg} alt="Preview" referrerPolicy="no-referrer" className="w-10 h-10 rounded-lg object-cover border border-white/10" />
+                      <button
+                        type="button"
+                        onClick={() => setCatImg("")}
+                        className="text-xs text-red-400 hover:text-red-500 font-mono font-bold"
+                      >
+                        [Remove]
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Category Dashboard Description</label>
+              <textarea
+                required
+                rows={3}
+                value={catDesc}
+                onChange={(e) => setCatDesc(e.target.value)}
+                placeholder="Discuss this sector's yields, duration types and bio-security protocols..."
+                className="w-full glass-input rounded-xl p-2.5 text-xs leading-relaxed text-white"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isCatSubmitting}
+              className="w-full py-3 bg-gold-accent hover:bg-yellow-500 disabled:opacity-50 text-slate-950 font-black rounded-xl text-xs uppercase tracking-widest transition-all cursor-pointer shadow-md flex items-center justify-center gap-1"
+            >
+              {isCatSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : catId ? (
+                "Update Livestock Category"
+              ) : (
+                "Create Livestock Category"
+              )}
+            </button>
+          </form>
+
+          {/* Current Category list */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold">Current Livestock Sectors ({(categories || []).length})</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {(categories || []).map((cat) => (
+                <div key={cat.id} className="glass-panel rounded-2xl overflow-hidden border border-white/5 flex flex-col justify-between group h-full bg-slate-950/25">
+                  <div className="relative h-36 w-full bg-slate-950 overflow-hidden">
+                    <img 
+                      src={cat.imageUrl} 
+                      alt={cat.name} 
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover opacity-80" 
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 to-transparent" />
+                    <div className="absolute bottom-3 left-4">
+                      <span className="text-xl block">{cat.emoji}</span>
+                      <h4 className="text-sm font-bold text-white">{cat.name} ({cat.type})</h4>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                      {p.name}
-                      <span className={`text-[8px] font-mono tracking-widest font-black uppercase px-2 py-0.5 rounded ${
-                        isPlanDisabled 
-                          ? "bg-slate-900 border border-slate-700 text-slate-400" 
-                          : "bg-emerald-950 border border-emerald-500/20 text-emerald-400"
-                      }`}>
-                        {p.status || "active"}
-                      </span>
-                    </h4>
-                    <span className="text-[10px] text-slate-400 font-mono uppercase block mt-1.5">
-                      Class: {p.type} • +{p.profitPercent}% Yield • {p.durationDays} Days Incubation
-                    </span>
-                    <span className="text-[10px] text-gold-accent font-mono block mt-0.5">
-                      Limits: ₦{p.minAmount.toLocaleString()} - ₦{p.maxAmount.toLocaleString()}
-                    </span>
+
+                  <div className="p-4 space-y-4">
+                    <p className="text-xs text-slate-400 leading-relaxed min-h-[40px]">
+                      {cat.description}
+                    </p>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleSelectCategoryToEdit(cat)}
+                        className="flex-1 py-1.5 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-bold transition-all border border-white/5 flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Edit className="w-3.5 h-3.5 text-gold-accent" />
+                        <span>Edit Category Details / Picture</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Package Form */}
+          <form onSubmit={handlePlanSubmit} className="glass-panel p-5 rounded-2xl space-y-4 border border-gold-accent/15 bg-slate-950/20">
+            <div className="flex justify-between items-center border-b border-white/5 pb-3">
+              <h3 className="text-xs font-mono uppercase tracking-wider text-gold-accent font-bold">
+                {pId ? "🛠️ Edit Farming Plan Blueprint" : "➕ Deploy Farming Plan Blueprint"}
+              </h3>
+              {pId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPId(""); setPName(""); setPMin(""); setPMax(""); setPYield(""); setPDays(""); setPImg(""); setPDesc(""); setPStatus("active");
+                  }}
+                  className="text-[10px] font-mono hover:text-white text-slate-400 uppercase font-bold"
+                >
+                  Clear edit mode [X]
+                </button>
+              )}
+            </div>
 
-                <div className="flex gap-2 border-t border-white/5 pt-3 justify-between items-center">
-                  <button
-                    onClick={() => handleTogglePlanState(p)}
-                    className={`px-3 py-1.5 rounded-lg text-[9px] font-mono font-bold uppercase transition-all ${
-                      isPlanDisabled
-                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-slate-950"
-                        : "bg-amber-500/10 text-amber-400 border border-gold-accent/20 hover:bg-amber-500 hover:text-slate-950"
-                    }`}
-                  >
-                    {isPlanDisabled ? "Enable Plan" : "Disable Plan"}
-                  </button>
+            <div className="grid grid-cols-2 gap-3.5">
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Plan Package Title</label>
+                <input
+                  type="text"
+                  required
+                  value={pName}
+                  onChange={(e) => setPName(e.target.value)}
+                  placeholder="e.g. Broiler Batch Grow"
+                  className="w-full glass-input rounded-xl p-2.5 text-xs text-white"
+                />
+              </div>
 
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleSelectToEdit(p)}
-                      className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-gold-accent text-[9px] font-mono font-bold transition-all"
-                    >
-                      <Edit className="w-3 h-3 inline mr-1" /> Edit
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm(`Are you completely sure you want to hard delete/remove '${p.name}'?`)) {
-                          deletePlan(p.id);
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Livestock Class</label>
+                <select
+                  value={pType}
+                  onChange={(e: any) => setPType(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 rounded-xl p-2.5 text-xs text-white"
+                >
+                  <option value="Chicken">🐔 Chicken Broilers Setup</option>
+                  <option value="Pig">🐷 Pigs Growth Setup</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Profit Return Yield (%)</label>
+                <input
+                  type="number"
+                  required
+                  value={pYield}
+                  onChange={(e) => setPYield(e.target.value)}
+                  placeholder="e.g. 20"
+                  className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Duration (Term Days)</label>
+                <input
+                  type="number"
+                  required
+                  value={pDays}
+                  onChange={(e) => setPDays(e.target.value)}
+                  placeholder="e.g. 30"
+                  className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Min Sponsor Limit (₦)</label>
+                <input
+                  type="number"
+                  required
+                  value={pMin}
+                  onChange={(e) => setPMin(e.target.value)}
+                  placeholder="e.g. 3000"
+                  className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Max Sponsor Limit (₦)</label>
+                <input
+                  type="number"
+                  required
+                  value={pMax}
+                  onChange={(e) => setPMax(e.target.value)}
+                  placeholder="e.g. 150000"
+                  className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Illustration Photo / Cover Image</label>
+                
+                {/* Elegant Device Photo Upload Zone */}
+                <div className="grid grid-cols-1 sm:grid-cols-10 gap-3.5 mt-1.5">
+                  <div className="sm:col-span-3 h-28 rounded-2xl overflow-hidden border border-white/10 bg-slate-900/60 flex flex-col items-center justify-center relative group">
+                    {pImg ? (
+                      <>
+                        <img src={pImg} alt="Preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setPImg("")}
+                          className="absolute top-2 right-2 bg-slate-950/80 hover:bg-red-500/80 text-white rounded-full p-1.5 transition-all text-[10px] border border-white/10 cursor-pointer"
+                          title="Clear photo"
+                        >
+                          ✕
+                        </button>
+                        <div className="absolute inset-x-0 bottom-0 bg-slate-950/90 py-1.5 text-center text-[9px] font-mono text-gold-accent font-semibold opacity-0 group-hover:opacity-100 transition-all">
+                          Photo Loaded ✓
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center p-3">
+                        <span className="text-xl block mb-1">📷</span>
+                        <span className="text-[10px] font-mono text-slate-400 block font-bold leading-none">NO COVER</span>
+                        <span className="text-[8px] text-slate-500 block mt-1 font-sans">800x600 recommended</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="sm:col-span-7 flex flex-col justify-between space-y-2">
+                    <input
+                      type="text"
+                      required
+                      value={pImg}
+                      onChange={(e) => setPImg(e.target.value)}
+                      placeholder="Paste cover URL or upload file below..."
+                      className="w-full glass-input rounded-xl p-2.5 text-xs font-mono text-white placeholder-slate-500"
+                    />
+                    
+                    <div className="flex gap-2">
+                      <label
+                        htmlFor="blueprint-file-uploader"
+                        className="flex-1 py-2.5 px-3 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-center text-[10px] font-bold uppercase tracking-wider border border-white/10 hover:border-white/25 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+                      >
+                        <ImageIcon className="w-4 h-4 text-gold-accent" />
+                        <span>Upload From Device</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const matchedPreset = PHOTO_PRESETS.find(p => p.category === pType);
+                          if (matchedPreset) setPImg(matchedPreset.url);
+                        }}
+                        className="py-2.5 px-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-white text-[10px] font-bold uppercase tracking-wider transition-all active:scale-95 cursor-pointer shrink-0"
+                      >
+                        Use Preset
+                      </button>
+                    </div>
+                    
+                    <p className="text-[9px] text-slate-400 leading-normal">
+                      Supports JPEG, PNG, or WebP. Files are resized and optimized automatically before saving.
+                    </p>
+                    <input
+                      type="file"
+                      id="blueprint-file-uploader"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (!file.type.startsWith("image/")) {
+                          alert("Please select a valid image file.");
+                          return;
                         }
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                          const img = new Image();
+                          img.onload = () => {
+                            const canvas = document.createElement("canvas");
+                            const MAX_WIDTH = 800;
+                            let width = img.width;
+                            let height = img.height;
+                            if (width > MAX_WIDTH) {
+                              height = Math.round((height * MAX_WIDTH) / width);
+                              width = MAX_WIDTH;
+                            }
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext("2d");
+                            if (ctx) {
+                              ctx.drawImage(img, 0, 0, width, height);
+                              const compressedBase64 = canvas.toDataURL("image/jpeg", 0.75);
+                              setPImg(compressedBase64);
+                            }
+                          };
+                          img.src = event.target?.result as string;
+                        };
+                        reader.readAsDataURL(file);
                       }}
-                      className="py-1.5 px-3 rounded-lg bg-red-950/20 hover:bg-red-500 hover:text-white text-red-400 text-[9px] font-mono font-bold transition-all"
-                    >
-                      <Trash2 className="w-3 h-3 inline mr-1" /> Delete
-                    </button>
+                    />
                   </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      </div>
+
+              <div className="col-span-2 sm:col-span-1">
+                <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Plan Initial Status</label>
+                <select
+                  value={pStatus}
+                  onChange={(e: any) => setPStatus(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 rounded-xl p-2.5 text-xs text-white"
+                >
+                  <option value="active">Active (Visible to user sponsors)</option>
+                  <option value="inactive">Inactive (Disabled / Hidden)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1 tracking-wider font-semibold">Detailed Blueprint Description</label>
+              <textarea
+                required
+                rows={3}
+                value={pDesc}
+                onChange={(e) => setPDesc(e.target.value)}
+                placeholder="Discuss veterinary monitoring parameters, live feeding audits protocols, export channels and security..."
+                className="w-full glass-input rounded-xl p-2.5 text-xs leading-relaxed text-white"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full py-3 bg-gold-accent hover:bg-yellow-500 disabled:opacity-50 text-slate-950 font-black rounded-xl text-xs uppercase tracking-widest transition-all cursor-pointer shadow-md flex items-center justify-center gap-1"
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : pId ? (
+                "Update Operational Blueprint"
+              ) : (
+                "Deploy Live Package Blueprint"
+              )}
+            </button>
+          </form>
+
+          {/* Plans List */}
+          <div className="space-y-3 pt-2">
+            <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold">Current System Blueprints ({plans.length})</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {plans.map((p) => {
+                const isPlanDisabled = p.status === "inactive";
+                return (
+                  <div 
+                    key={p.id} 
+                    className={`glass-panel p-4 rounded-2xl flex flex-col justify-between border transition-all ${
+                      isPlanDisabled ? "border-amber-500/20 bg-slate-950/40 opacity-70" : "hover:border-white/10"
+                    }`}
+                  >
+                    <div className="flex gap-3 mb-4">
+                      <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-white/10 bg-black">
+                        <img src={p.imageUrl} alt={p.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                          {p.name}
+                          <span className={`text-[8px] font-mono tracking-widest font-black uppercase px-2 py-0.5 rounded ${
+                            isPlanDisabled 
+                              ? "bg-slate-900 border border-slate-700 text-slate-400" 
+                              : "bg-emerald-950 border border-emerald-500/20 text-emerald-400"
+                          }`}>
+                            {p.status || "active"}
+                          </span>
+                        </h4>
+                        <span className="text-[10px] text-slate-400 font-mono uppercase block mt-1.5">
+                          Class: {p.type} • +{p.profitPercent}% Yield • {p.durationDays} Days Incubation
+                        </span>
+                        <span className="text-[10px] text-gold-accent font-mono block mt-0.5">
+                          Limits: ₦{p.minAmount.toLocaleString()} - ₦{p.maxAmount.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 border-t border-white/5 pt-3 justify-between items-center">
+                      <button
+                        onClick={() => handleTogglePlanState(p)}
+                        className={`px-3 py-1.5 rounded-lg text-[9px] font-mono font-bold uppercase transition-all ${
+                          isPlanDisabled
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-slate-950"
+                            : "bg-amber-500/10 text-amber-400 border border-gold-accent/20 hover:bg-amber-500 hover:text-slate-950"
+                        }`}
+                      >
+                        {isPlanDisabled ? "Enable Plan" : "Disable Plan"}
+                      </button>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleSelectToEdit(p)}
+                          className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-gold-accent text-[9px] font-mono font-bold transition-all"
+                        >
+                          <Edit className="w-3 h-3 inline mr-1" /> Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Are you completely sure you want to hard delete/remove '${p.name}'?`)) {
+                              deletePlan(p.id);
+                            }
+                          }}
+                          className="py-1.5 px-3 rounded-lg bg-red-950/20 hover:bg-red-500 hover:text-white text-red-400 text-[9px] font-mono font-bold transition-all"
+                        >
+                          <Trash2 className="w-3 h-3 inline mr-1" /> Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1309,16 +1946,95 @@ function FarmUpdatesManagementView() {
 
             <div>
               <label className="block text-[10px] font-mono text-slate-350 uppercase mb-1.5 font-bold tracking-wider">
-                Featured Cover Image URL
+                Featured Cover Photo / Image Attachment
               </label>
-              <input
-                type="text"
-                required
-                value={uImgRaw}
-                onChange={(e) => setUImgRaw(e.target.value)}
-                placeholder="https://images.unsplash.com/photo-..."
-                className="w-full glass-input rounded-xl p-3 text-xs text-white placeholder-slate-550 font-mono"
-              />
+
+              {/* Elegant Device Photo Upload Zone for Updates */}
+              <div className="grid grid-cols-1 sm:grid-cols-10 gap-3.5 mt-1.5">
+                <div className="sm:col-span-3 h-24 rounded-2xl overflow-hidden border border-white/10 bg-slate-900/60 flex flex-col items-center justify-center relative group">
+                  {uImgRaw ? (
+                    <>
+                      <img src={uImgRaw} alt="Live Update Preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setUImgRaw("")}
+                        className="absolute top-1.5 right-1.5 bg-slate-950/80 hover:bg-red-500/80 text-white rounded-full p-1.5 transition-all text-[9.5px] border border-white/10 cursor-pointer"
+                        title="Clear photo"
+                      >
+                        ✕
+                      </button>
+                      <div className="absolute inset-x-0 bottom-0 bg-slate-950/90 py-1 text-center text-[8.5px] font-mono text-gold-accent font-semibold opacity-0 group-hover:opacity-100 transition-all">
+                        Loaded ✓
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center p-2">
+                      <span className="text-lg block">📷</span>
+                      <span className="text-[9px] font-mono text-slate-400 block font-bold leading-none mt-0.5">NO IMAGE</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="sm:col-span-7 flex flex-col justify-between space-y-1.5">
+                  <input
+                    type="text"
+                    required
+                    value={uImgRaw}
+                    onChange={(e) => setUImgRaw(e.target.value)}
+                    placeholder="Paste image URL or select from device below..."
+                    className="w-full glass-input rounded-xl p-2.5 text-xs text-white placeholder-slate-500 font-mono"
+                  />
+                  
+                  <div className="flex gap-2">
+                    <label
+                      htmlFor="update-file-uploader"
+                      className="flex-1 py-2 px-3 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-center text-[10px] font-bold uppercase tracking-wider border border-white/10 hover:border-white/25 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+                    >
+                      <ImageIcon className="w-4 h-4 text-gold-accent" />
+                      <span>Upload Device Image</span>
+                    </label>
+                  </div>
+                  
+                  <input
+                    type="file"
+                    id="update-file-uploader"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (!file.type.startsWith("image/")) {
+                        alert("Please select a high quality image file.");
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        const img = new Image();
+                        img.onload = () => {
+                          const canvas = document.createElement("canvas");
+                          const MAX_WIDTH = 800;
+                          let width = img.width;
+                          let height = img.height;
+                          if (width > MAX_WIDTH) {
+                            height = Math.round((height * MAX_WIDTH) / width);
+                            width = MAX_WIDTH;
+                          }
+                          canvas.width = width;
+                          canvas.height = height;
+                          const ctx = canvas.getContext("2d");
+                          if (ctx) {
+                            ctx.drawImage(img, 0, 0, width, height);
+                            const compressedBase64 = canvas.toDataURL("image/jpeg", 0.75);
+                            setUImgRaw(compressedBase64);
+                          }
+                        };
+                        img.src = event.target?.result as string;
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </div>
+              </div>
 
               {/* Cover Photo presets quick selector */}
               <div className="mt-2.5 bg-slate-950/40 p-2.5 rounded-xl border border-white/5">
@@ -1483,7 +2199,7 @@ function NotificationsManagementView() {
 
     try {
       await sendBroadcastNotification(pushTitle, notifMsg.trim(), targetId);
-      alert("Success! Bulletin alert has been dispatched and stored on Appwrite databases successfully.");
+      alert("Success! Bulletin alert has been dispatched and stored on Firebase/Firestore successfully.");
       setNotifTitle("");
       setNotifMsg("");
     } catch (err: any) {

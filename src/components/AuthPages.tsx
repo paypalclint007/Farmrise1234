@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useFarm } from "../context/FarmContext";
-import { LogIn, UserPlus, Shield, Sparkles, RefreshCw, Settings, Database, Sliders, Check, HelpCircle } from "lucide-react";
+import { LogIn, UserPlus, Shield, Sparkles, RefreshCw, Settings, Database, Sliders, Check, HelpCircle, ShieldAlert } from "lucide-react";
 import { motion } from "motion/react";
 import { getAppwriteConfig, saveAppwriteOverride, clearAppwriteOverride } from "../appwrite";
 
@@ -150,33 +150,14 @@ export function LoginPage() {
             </div>
             
             <p className="text-[10.5px] leading-relaxed text-slate-300 font-sans">
-              Could not contact the Appwrite cloud. This usually happens if domain authorization is pending or web CORS is disabled in your Appwrite panel.
+              Could not contact the centralized secure cloud database. Please verify your connection or reload.
             </p>
 
             <div className="bg-black/35 p-2 rounded-lg text-[9px] font-mono text-slate-400 border border-white/5 whitespace-pre-wrap overflow-x-auto max-h-[80px] break-all">
               {connectionError}
             </div>
 
-            <div className="pt-1.5 border-t border-amber-500/10">
-              <button
-                type="button"
-                onClick={() => {
-                  saveAppwriteOverride({
-                    endpoint: "https://cloud.appwrite.io/v1",
-                    projectId: "",
-                    databaseId: "default",
-                    useMock: true
-                  });
-                }}
-                className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-slate-950 hover:opacity-95 rounded-xl text-[11px] font-extrabold uppercase tracking-wide transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/15"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Activate Sandbox Mode (No Setup!)
-              </button>
-              <p className="text-[9px] text-slate-405 text-center mt-1 text-slate-400">
-                ⚡ Play & test instantly in stable simulated offline sandbox!
-              </p>
-            </div>
+            {/* Offline sandbox is deactivated per production guidelines */}
 
             <div className="flex gap-2 pt-1 border-t border-white/5">
               <button
@@ -222,12 +203,9 @@ export function LoginPage() {
             </p>
             {errorMsg.toLowerCase().includes("failed to fetch") && (
               <div className="text-[10px] bg-black/40 p-2.5 rounded-lg border border-red-500/10 text-slate-300 space-y-1.5 mt-1 font-sans text-left">
-                <span className="font-bold text-amber-405 block text-amber-400">💡 Network Connection Check Needed:</span>
+                <span className="font-bold text-amber-400 block pb-0.5">💡 Connection Check:</span>
                 <p className="leading-normal text-slate-300">
-                  This error occurs if your domain (<code className="text-gold-accent font-mono">{typeof window !== "undefined" ? window.location.hostname : ""}</code>) has not been added as a <strong>Web Platform</strong> inside your Appwrite console settings.
-                </p>
-                <p className="leading-normal text-slate-400">
-                  To bypass this, you can toggle <strong>Local Sandbox Mode</strong> below to run the app instantly with simulated offline state!
+                  Your requests are routed through the secure proxy pipeline. Please verify that your cloud backend is fully active and database roles are provisioned.
                 </p>
               </div>
             )}
@@ -293,12 +271,6 @@ export function LoginPage() {
                   </>
                 )}
               </button>
-
-              <div className="text-center">
-                <span className="inline-block text-[9px] text-[#A6ACAF] font-sans leading-normal px-2 py-1 bg-white/5 rounded-lg border border-white/5">
-                  🛡️ <strong>By-All-Means Login active</strong>: If cloud endpoints fail or CORS is unauthorized, you will be authenticated into a live <strong>Offline Sandbox</strong> instantly.
-                </span>
-              </div>
             </form>
 
           </>
@@ -353,128 +325,6 @@ export function LoginPage() {
           </button>
         </p>
 
-        {/* Dynamic Appwrite Settings Override */}
-        <div className="mt-6 pt-4 border-t border-white/5">
-          <button
-            type="button"
-            onClick={() => setShowSettings(!showSettings)}
-            className="w-full flex items-center justify-center gap-1.5 text-[10px] font-mono text-slate-400 hover:text-gold-accent transition-colors"
-          >
-            <Settings className={`w-3 h-3 ${showSettings ? "animate-spin text-gold-accent" : ""}`} />
-            {showSettings ? "Hide Connection Settings" : "Configure Appwrite Connection"}
-          </button>
-
-          {showSettings && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              className="mt-3.5 space-y-3 bg-black/40 p-3.5 rounded-xl border border-white/5 text-left"
-            >
-              <div className="flex items-center gap-1 text-[10px] font-bold text-slate-300 font-mono uppercase tracking-wide">
-                <Database className="w-3.5 h-3.5 text-gold-accent" /> Connection Setup
-              </div>
-
-              {/* Toggle offline vs cloud */}
-              <div className="grid grid-cols-2 gap-2 bg-slate-900/60 p-1 rounded-lg border border-white/5 text-[10px]">
-                <button
-                  type="button"
-                  onClick={() => setUseMock(true)}
-                  className={`py-1.5 rounded-md font-bold uppercase transition-all tracking-wider ${
-                    useMock
-                      ? "bg-amber-500/15 text-amber-400 border border-amber-500/25"
-                      : "text-slate-400 hover:text-slate-200 border border-transparent font-medium"
-                  }`}
-                >
-                  Local Sandbox
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUseMock(false)}
-                  className={`py-1.5 rounded-md font-bold uppercase transition-all tracking-wider ${
-                    !useMock
-                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
-                      : "text-slate-400 hover:text-slate-200 border border-transparent font-medium"
-                  }`}
-                >
-                  Cloud Mode (Real API)
-                </button>
-              </div>
-
-              {useMock ? (
-                <div className="text-[10px] space-y-1.5 text-slate-300 bg-amber-500/5 p-2.5 rounded-lg border border-amber-500/10 leading-normal">
-                  <span className="font-bold text-amber-400 uppercase tracking-wide text-[9px] block">⚠️ Sandbox mode active</span>
-                  <p>
-                    All database queries and user accounts will operate on simulated storage locally in your browser. This bypasses Appwrite cloud access entirely! No custom setup or permissions are needed.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2 text-[10px]">
-                  <p className="text-[9px] text-slate-400 leading-normal bg-black/20 p-2 rounded-lg border border-white/5">
-                    Enter your Appwrite Project ID and Endpoint. Don't forget to add <code className="text-gold-accent font-mono">{typeof window !== "undefined" ? window.location.hostname : ""}</code> as a <strong>Web Platform</strong> inside your Appwrite console settings!
-                  </p>
-                  <div>
-                    <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1">API Endpoint</label>
-                    <input
-                      type="text"
-                      value={customEndpoint}
-                      onChange={(e) => setCustomEndpoint(e.target.value)}
-                      placeholder="https://cloud.appwrite.io/v1"
-                      className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1 font-bold">Project ID</label>
-                    <input
-                      type="text"
-                      value={customProjectId}
-                      onChange={(e) => setCustomProjectId(e.target.value)}
-                      placeholder="Enter Appwrite Project ID"
-                      className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 font-mono text-[9px] uppercase mb-1">Database ID</label>
-                    <input
-                      type="text"
-                      value={customDatabaseId}
-                      onChange={(e) => setCustomDatabaseId(e.target.value)}
-                      placeholder="default"
-                      className="w-full bg-slate-900/80 border border-white/10 rounded-lg p-1.5 text-xs font-mono text-white focus:border-gold-accent/40 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    saveAppwriteOverride({
-                      endpoint: customEndpoint,
-                      projectId: useMock ? "" : customProjectId,
-                      databaseId: customDatabaseId,
-                      useMock: useMock
-                    });
-                  }}
-                  className="flex-1 py-1.5 rounded-lg bg-gold-accent text-slate-950 text-[10px] font-bold uppercase tracking-wider text-center hover:opacity-90"
-                >
-                  Save & Reload
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearAppwriteOverride();
-                  }}
-                  className="px-2 py-1.5 rounded-lg border border-white/10 bg-white/5 text-slate-300 text-[10px] font-bold uppercase tracking-wider hover:bg-white/10"
-                >
-                  Reset Defaults
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </div>
       </motion.div>
     </div>
   );
@@ -491,6 +341,7 @@ export function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
   const [retryingConn, setRetryingConn] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [statusMsg, setStatusMsg] = useState("");
 
   // Scan and automatically prefill referral links (e.g., /register?ref=RISE1234)
   useEffect(() => {
@@ -515,12 +366,14 @@ export function RegisterPage() {
     }
     setSubmitting(true);
     setErrorMsg("");
+    setStatusMsg("Initializing registration flow...");
     try {
-      await registerWithEmail(email, password, name, phoneNumber, referredBy);
+      await registerWithEmail(email, password, name, phoneNumber, referredBy, setStatusMsg);
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to create investor account.");
     } finally {
       setSubmitting(false);
+      setStatusMsg("");
     }
   };
 
@@ -532,8 +385,35 @@ export function RegisterPage() {
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-sm glass-panel rounded-3xl p-6 glow-green my-8"
+        className="w-full max-w-sm glass-panel rounded-3xl p-6 glow-green my-8 relative overflow-hidden"
       >
+        {submitting && (
+          <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-center">
+            <div className="relative mb-6">
+              <div className="absolute -inset-4 rounded-full bg-green-accent/10 blur-xl animate-pulse" />
+              <div className="w-16 h-16 rounded-full border-4 border-white/5 border-t-green-accent animate-spin flex items-center justify-center shadow-lg">
+                <Database className="w-6 h-6 text-green-accent" />
+              </div>
+            </div>
+            
+            <h3 className="text-sm font-bold text-white font-display uppercase tracking-widest">
+              Investor Registration
+            </h3>
+            
+            <p className="text-xs text-slate-300 mt-2 font-mono h-12 flex items-center justify-center max-w-[240px] leading-relaxed">
+              {statusMsg || "Processing synchronization..."}
+            </p>
+
+            <div className="w-32 bg-white/10 h-1 rounded-full mt-4 overflow-hidden relative">
+              <div className="absolute top-0 left-0 h-full w-16 bg-gradient-to-r from-green-accent to-emerald-400 animate-pulse" />
+            </div>
+
+            <p className="text-[10px] text-slate-500 mt-8 font-mono tracking-wider uppercase">
+              Verifying real-time ledger sync
+            </p>
+          </div>
+        )}
+
         <div className="text-center mb-6">
           <div className="w-12 h-12 bg-gradient-to-tr from-green-accent to-emerald-500 rounded-2xl flex items-center justify-center shadow-md mb-3 mx-auto">
             <span className="text-slate-950 font-bold text-xl font-display">FR</span>
@@ -558,123 +438,101 @@ export function RegisterPage() {
           </button>
         </div>
 
-        {connectionError && (
-          <div className="bg-amber-500/10 border border-amber-500/25 p-3.5 rounded-2xl text-xs mb-4 space-y-2.5 text-left">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-amber-400 font-mono text-[10px] uppercase tracking-wide flex items-center gap-1">
-                ⚠️ Connection Offline
-              </span>
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/12 text-amber-305 font-mono uppercase font-bold animate-pulse text-amber-450">
-                Offline Mode available
-              </span>
-            </div>
-            
-            <p className="text-[10.5px] leading-relaxed text-slate-300 font-sans">
-              Appwrite backend is offline. You can still test and play instantly in a simulated offline state!
-            </p>
-
-            <div className="pt-1 border-t border-amber-500/10">
-              <button
-                type="button"
-                onClick={() => {
-                  saveAppwriteOverride({
-                    endpoint: "https://cloud.appwrite.io/v1",
-                    projectId: "",
-                    databaseId: "default",
-                    useMock: true
-                  });
-                }}
-                className="w-full py-2 px-3 bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 text-slate-950 hover:opacity-95 rounded-xl text-[10px] font-extrabold uppercase tracking-wide transition-all flex items-center justify-center gap-1 shadow-lg shadow-amber-500/15 animate-shimmer"
-              >
-                <Sparkles className="w-3 h-3" />
-                Activate Sandbox (Direct Registration)
-              </button>
-            </div>
-          </div>
-        )}
-
         {errorMsg && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-3 rounded-xl text-xs font-mono mb-4">
-            ⚠️ {errorMsg}
+          <div className="p-4 rounded-2xl mb-4 bg-red-500/10 border border-red-500/20 text-red-200 text-xs leading-relaxed font-mono">
+            <div className="flex gap-2">
+              <span className="text-sm">⚠️</span>
+              <div>
+                <p className="font-bold font-display uppercase text-[10px] tracking-wider mb-1 text-red-400">
+                  Registration Error
+                </p>
+                <p className="text-[11px] font-sans text-slate-300">{errorMsg}</p>
+                {(errorMsg.toLowerCase().includes("already exists") || errorMsg.toLowerCase().includes("already exist")) && (
+                  <p className="text-[10px] text-amber-400 mt-2 border-t border-amber-500/10 pt-2 font-sans font-medium">
+                    Tip: You have already registered this account! Please click the "Sign In / Login" tab above to access your investment portal.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <div>
-            <label className="block text-[11px] font-mono text-slate-450 uppercase mb-1 font-bold">Full Investor Name *</label>
+            <label className="block text-[11px] font-mono text-slate-400 uppercase mb-1 font-bold">Full Investor Name *</label>
             <input
               type="text"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="John Doe"
-              className="w-full glass-input rounded-xl p-2.5 text-xs focus:border-gold-accent font-sans"
+              className="w-full glass-input rounded-xl p-2.5 text-xs focus:border-green-accent font-sans bg-slate-900 border border-slate-700 text-white"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-mono text-slate-450 uppercase mb-1 font-bold">Email Address *</label>
+            <label className="block text-[11px] font-mono text-slate-400 uppercase mb-1 font-bold">Email Address *</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="investor@gmail.com"
-              className="w-full glass-input rounded-xl p-2.5 text-xs focus:border-[#2ECC71] font-sans"
+              className="w-full glass-input rounded-xl p-2.5 text-xs focus:border-green-accent font-sans bg-slate-900 border border-slate-700 text-white"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-mono text-slate-450 uppercase mb-1 font-bold">Phone Number *</label>
+            <label className="block text-[11px] font-mono text-slate-400 uppercase mb-1 font-bold">Phone Number *</label>
             <input
               type="tel"
               required
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               placeholder="+234 801 234 5678"
-              className="w-full glass-input rounded-xl p-2.5 text-xs focus:border-[#2ECC71] font-sans"
+              className="w-full glass-input rounded-xl p-2.5 text-xs focus:border-green-accent font-sans bg-slate-900 border border-slate-700 text-white"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-mono text-slate-450 uppercase mb-1 font-bold">Secure Password *</label>
+            <label className="block text-[11px] font-mono text-slate-400 uppercase mb-1 font-bold">Secure Password *</label>
             <input
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full glass-input rounded-xl p-2.5 text-xs focus:border-[#2ECC71] font-sans"
+              className="w-full glass-input rounded-xl p-2.5 text-xs focus:border-green-accent font-sans bg-slate-900 border border-slate-700 text-white"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-mono text-slate-450 uppercase mb-1 font-bold">Confirm Password *</label>
+            <label className="block text-[11px] font-mono text-slate-400 uppercase mb-1 font-bold">Confirm Password *</label>
             <input
               type="password"
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full glass-input rounded-xl p-2.5 text-xs focus:border-[#2ECC71] font-sans"
+              className="w-full glass-input rounded-xl p-2.5 text-xs focus:border-green-accent font-sans bg-slate-900 border border-slate-700 text-white"
             />
           </div>
 
           <div>
-            <label className="block text-[11px] font-mono text-slate-450 uppercase mb-1 font-bold">Referral Code (Optional)</label>
+            <label className="block text-[11px] font-mono text-slate-400 uppercase mb-1 font-bold">Referral Code (Optional)</label>
             <input
               type="text"
               value={referredBy}
               onChange={(e) => setReferredBy(e.target.value)}
               placeholder="RISE9284"
-              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono"
+              className="w-full glass-input rounded-xl p-2.5 text-xs font-mono bg-slate-900 border border-slate-700 text-white"
             />
           </div>
 
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 mt-2 rounded-xl bg-green-accent text-white font-bold transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:scale-[1.01]"
+            className="w-full py-3 mt-2 rounded-xl bg-green-accent text-slate-950 font-bold transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:scale-[1.01]"
           >
             {submitting ? (
               <RefreshCw className="animate-spin w-4 h-4" />
@@ -684,12 +542,6 @@ export function RegisterPage() {
               </>
             )}
           </button>
-
-          <div className="text-center mt-3">
-            <span className="inline-block text-[9px] text-[#A6ACAF] font-sans leading-normal px-2 py-1 bg-white/5 rounded-lg border border-white/5">
-              🛡️ <strong>Automated signup fallback</strong>: If cloud connection CORS is blocked, your account is immediately registered in a high-speed <strong>Offline Sandbox</strong> instantly.
-            </span>
-          </div>
         </form>
 
         <p className="text-center text-[12px] text-slate-400 mt-5 leading-loose">
@@ -697,7 +549,7 @@ export function RegisterPage() {
           <button 
             type="button" 
             onClick={() => navigate("login")} 
-            className="text-gold-accent font-bold hover:underline py-2 px-3 bg-white/5 rounded-lg border border-white/5 cursor-pointer inline-block mt-1 hover:text-white transition-all text-xs"
+            className="text-green-accent font-bold hover:underline py-2 px-3 bg-white/5 rounded-lg border border-white/5 cursor-pointer inline-block mt-1 hover:text-white transition-all text-xs"
           >
             Login here
           </button>

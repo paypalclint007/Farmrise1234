@@ -9,6 +9,7 @@ import {
 import { isMockAppwrite, testConnection, APPWRITE_CONFIG, verifyDepositsCollection, formatAppwriteEndpoint } from "../appwrite";
 import { motion } from "motion/react";
 import { ActiveInvestment } from "../types";
+import { playNotificationChime, requestBrowserNotificationPermission } from "../utils/notifications";
 
 export default function UserPages() {
   const { currentPage, navigate } = useFarm();
@@ -44,6 +45,7 @@ function DashboardView() {
     withdrawals, 
     referrals, 
     plans, 
+    categories,
     triggerMaturityCheck, 
     navigate 
   } = useFarm();
@@ -101,7 +103,7 @@ function DashboardView() {
   }));
 
   const refActivities = referrals
-    .filter(r => r.referrerId === currentUser?.id && r.status === "active" && r.commissionPaid > 0)
+    .filter(r => (r.referrerId === currentUser?.id || r.referrerId === `code_${currentUser?.referralCode?.toUpperCase()}` || r.referrerCode?.toUpperCase() === currentUser?.referralCode?.toUpperCase()) && r.status === "active" && r.commissionPaid > 0)
     .map(r => ({
       id: r.id,
       type: "referral_bonus" as const,
@@ -301,93 +303,62 @@ function DashboardView() {
           <h2 className="text-lg font-extrabold font-display text-white tracking-tight">
             Investment Categories
           </h2>
-          <span className="text-xs text-slate-400 font-mono">2 major livestock sectors</span>
+          <span className="text-xs text-slate-400 font-mono">{(categories || []).length} active sectors</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* Card 1: 🐔 Chicken Farming */}
-          <div className="glass-panel rounded-2xl overflow-hidden hover:border-emerald-500/20 transition-all duration-300 flex flex-col justify-between group h-full">
-            <div className="relative h-44 w-full bg-slate-950 overflow-hidden">
-              <img 
-                src="https://images.unsplash.com/photo-1548550123-94f1067bc16f?w=800&auto=format&fit=crop&q=80" 
-                alt="Chicken Farming" 
-                className="w-full h-full object-cover opacity-80 group-hover:scale-105 duration-700 transition-transform" 
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
-              <div className="absolute bottom-4 left-5">
-                <span className="text-2xl block mb-1">🐔</span>
-                <h3 className="text-lg font-bold text-white">Chicken Farming</h3>
-              </div>
-            </div>
+          {(categories || []).map((cat) => {
+            const catPlans = plans.filter(p => p.type === cat.type && p.status === "active");
+            const catPlansCount = catPlans.length;
+            const isChicken = cat.type === "Chicken";
+            const defaultMin = isChicken ? 12 : 22;
+            const defaultMax = isChicken ? 18 : 35;
+            const minROI = catPlans.length ? Math.min(...catPlans.map(p => p.profitPercent)) : defaultMin;
+            const maxROI = catPlans.length ? Math.max(...catPlans.map(p => p.profitPercent)) : defaultMax;
 
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-xs font-mono border-b border-white/5 pb-3">
-                <div>
-                  <span className="text-slate-450 block uppercase text-[10px]">Available Plans</span>
-                  <span className="text-slate-200 font-extrabold text-sm">{chickenPlansCount} Standard Plans</span>
+            return (
+              <div key={cat.id} className="glass-panel rounded-2xl overflow-hidden hover:border-emerald-500/20 transition-all duration-300 flex flex-col justify-between group h-full">
+                <div className="relative h-44 w-full bg-slate-950 overflow-hidden">
+                  <img 
+                    src={cat.imageUrl} 
+                    alt={cat.name} 
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover opacity-80 group-hover:scale-105 duration-700 transition-transform" 
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
+                  <div className="absolute bottom-4 left-5">
+                    <span className="text-2xl block mb-1">{cat.emoji}</span>
+                    <h3 className="text-lg font-bold text-white">{cat.name}</h3>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-slate-450 block uppercase text-[10px] text-right">ROI Range</span>
-                  <span className="text-emerald-400 font-extrabold text-sm block text-right">{chickenMinROI}% - {chickenMaxROI}% Yield</span>
-                </div>
-              </div>
 
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Fund modern, biosensor-equipped broiler houses and egg hatcheries with optimized feed allocation engines. Generates quick, high-precision payouts.
-              </p>
+                <div className="p-5 space-y-4">
+                  <div className="grid grid-cols-2 gap-4 text-xs font-mono border-b border-white/5 pb-3">
+                    <div>
+                      <span className="text-slate-450 block uppercase text-[10px]">Available Plans</span>
+                      <span className="text-slate-200 font-extrabold text-sm">{catPlansCount} {isChicken ? "Standard" : "Premium"} Plans</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-450 block uppercase text-[10px] text-right">ROI Range</span>
+                      <span className={`${isChicken ? "text-emerald-400" : "text-amber-400"} font-extrabold text-sm block text-right`}>{minROI}% - {maxROI}% Yield</span>
+                    </div>
+                  </div>
 
-              <button 
-                onClick={() => navigate("investment-plans")}
-                className="w-full py-2.5 bg-white/5 border border-white/10 hover:border-emerald-400/20 hover:bg-white/10 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span>View Plans</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
+                  <p className="text-xs text-slate-400 leading-relaxed min-h-[40px]">
+                    {cat.description}
+                  </p>
 
-          {/* Card 2: 🐖 Pig Farming */}
-          <div className="glass-panel rounded-2xl overflow-hidden hover:border-pink-500/20 transition-all duration-300 flex flex-col justify-between group h-full">
-            <div className="relative h-44 w-full bg-slate-950 overflow-hidden">
-              <img 
-                src="https://images.unsplash.com/photo-1604848698030-c434ba08eca1?w=800&auto=format&fit=crop&q=80" 
-                alt="Pig Farming" 
-                className="w-full h-full object-cover opacity-80 group-hover:scale-105 duration-700 transition-transform" 
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
-              <div className="absolute bottom-4 left-5">
-                <span className="text-2xl block mb-1">🐖</span>
-                <h3 className="text-lg font-bold text-white">Pig Farming</h3>
-              </div>
-            </div>
-
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-xs font-mono border-b border-white/5 pb-3">
-                <div>
-                  <span className="text-slate-450 block uppercase text-[10px]">Available Plans</span>
-                  <span className="text-slate-200 font-extrabold text-sm">{pigPlansCount} premium Plans</span>
-                </div>
-                <div>
-                  <span className="text-slate-450 block uppercase text-[10px] text-right">ROI Range</span>
-                  <span className="text-amber-400 font-extrabold text-sm block text-right">{pigMinROI}% - {pigMaxROI}% Yield</span>
+                  <button 
+                    onClick={() => navigate("investment-plans")}
+                    className="w-full py-2.5 bg-white/5 border border-white/10 hover:border-emerald-400/20 hover:bg-white/10 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>View Plans</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
-
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Back standard, climate-controlled pig units tracking export-grade meat production lines. Long-term breeding contracts with compounding margins.
-              </p>
-
-              <button 
-                onClick={() => navigate("investment-plans")}
-                className="w-full py-2.5 bg-white/5 border border-white/10 hover:border-amber-400/20 hover:bg-white/10 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span>View Plans</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-
+            );
+          })}
         </div>
       </div>
 
@@ -745,7 +716,7 @@ function DepositView() {
               {receiptImage ? (
                 <div className="flex flex-col items-center space-y-3 w-full">
                   <div className="w-24 h-24 rounded-lg overflow-hidden border border-white/20 shadow-md">
-                    <img src={receiptImage} alt="Receipt Preview" className="w-full h-full object-cover" />
+                    <img src={receiptImage} alt="Receipt Preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                   </div>
                   <div className="text-center">
                     <span className="text-xs font-bold text-slate-200 block truncate max-w-[260px] font-mono">
@@ -912,6 +883,7 @@ function PlansView() {
                 <img
                   src={plan.imageUrl}
                   alt={plan.name}
+                  referrerPolicy="no-referrer"
                   className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
                 />
                 
@@ -1087,7 +1059,7 @@ function PlansView() {
             <div className="space-y-1.5">
               <h3 className="text-xl font-black text-white font-display">Sponsorship Activated!</h3>
               <p className="text-xs text-slate-450 leading-relaxed">
-                You have successfully sponsored the <strong className="text-white">{successInfo.planName}</strong> program. Your contract is now active in the Appwrite pipeline.
+                You have successfully sponsored the <strong className="text-white">{successInfo.planName}</strong> program. Your contract is now active in the Firebase pipeline.
               </p>
             </div>
 
@@ -1181,7 +1153,7 @@ function PlanDetailsView() {
       </button>
 
       <div className="w-full h-44 rounded-2xl overflow-hidden bg-slate-950 border border-white/10">
-        <img src={selectedPlan.imageUrl} alt={selectedPlan.name} className="w-full h-full object-cover" />
+        <img src={selectedPlan.imageUrl} alt={selectedPlan.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
       </div>
 
       <div className="glass-panel rounded-2xl p-5 space-y-4">
@@ -1361,7 +1333,7 @@ function ActiveInvestmentsView() {
                   >
                     {/* Header Image Area with overlays */}
                     <div className="h-44 relative bg-slate-950 overflow-hidden">
-                      <img src={imageUrl} alt={inv.planName} className="w-full h-full object-cover opacity-75" />
+                      <img src={imageUrl} alt={inv.planName} referrerPolicy="no-referrer" className="w-full h-full object-cover opacity-75" />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/25 to-transparent" />
 
                       {/* Status / Type indicators */}
@@ -1593,14 +1565,47 @@ function ProfileSubTabs({ active }: { active: "profile" | "referral" | "withdraw
 
 // 6. Referral Page
 function ReferralView() {
-  const { currentUser, referrals } = useFarm();
+  const { currentUser, referrals, deposits, investments } = useFarm();
   const code = currentUser?.referralCode || "RISE8349";
 
-  const myReferrals = referrals.filter(r => r.referrerId === currentUser?.id);
-  const activeReferrals = myReferrals.filter(r => r.status === "active");
-  const pendingReferrals = myReferrals.filter(r => r.status === "pending");
+  const myReferrals = referrals.filter(r => r.referrerId === currentUser?.id || r.referrerId === `code_${currentUser?.referralCode?.toUpperCase()}` || r.referrerCode?.toUpperCase() === currentUser?.referralCode?.toUpperCase());
+  
+  // Dynamic deposit status check
+  const isReferredUserDeposited = (referredId: string, referredEmail: string) => {
+    return deposits.some(d => 
+      (d.userId === referredId || d.userId?.toLowerCase() === referredEmail?.toLowerCase())
+    );
+  };
 
-  const totalCommissionEarned = myReferrals.reduce((sum, r) => sum + r.commissionPaid, 0);
+  const activeReferrals = myReferrals.filter(r => 
+    r.status === "active" || 
+    r.status === "complete" || 
+    isReferredUserDeposited(r.referredId, r.referredEmail)
+  );
+  const pendingReferrals = myReferrals.filter(r => 
+    r.status !== "active" && 
+    r.status !== "complete" && 
+    !isReferredUserDeposited(r.referredId, r.referredEmail)
+  );
+
+  // Filter unique referred users who have completed at least one investment sponsorship contract
+  const investingReferrals = myReferrals.filter(r => 
+    investments.some(inv => inv.userId === r.referredId)
+  );
+  const uniqueInvestingCount = new Set(investingReferrals.map(r => r.referredId.toLowerCase().trim())).size;
+  const progressPercent = Math.min(100, (uniqueInvestingCount / 2) * 100);
+  const meetsReferralRequirement = currentUser?.isAdmin || uniqueInvestingCount >= 2;
+
+  const totalCommissionEarned = myReferrals.reduce((sum, r) => {
+    if (r.status === "active" || r.status === "complete") {
+      return sum + r.commissionPaid;
+    }
+    const matchDep = deposits.find(d => d.userId === r.referredId || d.userId?.toLowerCase() === r.referredEmail?.toLowerCase());
+    if (matchDep) {
+      return sum + Number((matchDep.amount * 0.05).toFixed(2));
+    }
+    return sum;
+  }, 0);
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(code);
@@ -1608,7 +1613,7 @@ function ReferralView() {
   };
 
   const handleCopyLink = () => {
-    const inviteLink = `${window.location.origin}/register?ref=${code}`;
+    const inviteLink = `https://farmrise-512146898255.europe-west2.run.app/register?ref=${code}`;
     navigator.clipboard.writeText(inviteLink);
     alert("FarmRise unique referral link copied to your clipboard!");
   };
@@ -1646,6 +1651,81 @@ function ReferralView() {
             <span className="text-xs font-bold font-display text-amber-400 block truncate">
               ₦{totalCommissionEarned.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 2-Invite Withdrawal Gateway Visual Progress Tracker */}
+      <div className="glass-panel rounded-2xl p-5 border border-white/10 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1 text-left">
+            <h3 className="text-xs font-mono uppercase tracking-wider text-amber-400 font-black flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" /> Cash-Out Activation Status
+            </h3>
+            <p className="text-[11px] text-slate-400 font-sans leading-snug">
+              Security Framework Check: 2 invited partners must activate their first agri-investment to permanently unlock your cash-out gateway.
+            </p>
+          </div>
+          <span className={`text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${
+            meetsReferralRequirement 
+              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" 
+              : "bg-amber-500/15 text-amber-400 border border-amber-500/20"
+          }`}>
+            {meetsReferralRequirement ? "Eligible" : "Locked"}
+          </span>
+        </div>
+
+        {/* Progress bar container */}
+        <div className="space-y-2">
+          <div className="flex justify-between text-[11px] font-mono font-bold text-slate-300">
+            <span>Sponsors Activated: {uniqueInvestingCount} / 2 active contracts ({uniqueInvestingCount >= 2 ? "Goal Met!" : `${2 - uniqueInvestingCount} more required`})</span>
+            <span>{Math.round(progressPercent)}%</span>
+          </div>
+          
+          <div className="w-full bg-slate-950/70 rounded-full h-3 border border-white/5 overflow-hidden p-[2px]">
+            <div 
+              className={`h-full rounded-full transition-all duration-1000 ease-out-back ${
+                meetsReferralRequirement 
+                  ? "bg-gradient-to-r from-emerald-500 to-emerald-400" 
+                  : "bg-gradient-to-r from-amber-500 via-orange-400 to-amber-400"
+              }`}
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Individual Checkpoint Milestones list */}
+        <div className="grid grid-cols-2 gap-3 text-[11px] text-left">
+          <div className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+            uniqueInvestingCount >= 1 
+              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" 
+              : "bg-slate-950/50 border-white/5 text-slate-400"
+          }`}>
+            <div className="flex items-center space-x-2">
+              <UserCheck className={`w-4 h-4 ${uniqueInvestingCount >= 1 ? "text-emerald-400" : "text-slate-500"}`} />
+              <span className="font-bold">Partner 1</span>
+            </div>
+            {uniqueInvestingCount >= 1 ? (
+              <span className="text-[9px] bg-emerald-500/20 px-2 py-0.5 rounded-full font-mono font-bold uppercase">Invested</span>
+            ) : (
+              <span className="text-[9px] bg-slate-900/80 text-slate-500 px-2 py-0.5 rounded-full font-mono font-bold uppercase">Pending</span>
+            )}
+          </div>
+
+          <div className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+            uniqueInvestingCount >= 2 
+              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" 
+              : "bg-slate-950/50 border-white/5 text-slate-400"
+          }`}>
+            <div className="flex items-center space-x-2">
+              <UserCheck className={`w-4 h-4 ${uniqueInvestingCount >= 2 ? "text-emerald-400" : "text-slate-500"}`} />
+              <span className="font-bold">Partner 2</span>
+            </div>
+            {uniqueInvestingCount >= 2 ? (
+              <span className="text-[9px] bg-emerald-500/20 px-2 py-0.5 rounded-full font-mono font-bold uppercase">Invested</span>
+            ) : (
+              <span className="text-[9px] bg-slate-900/80 text-slate-500 px-2 py-0.5 rounded-full font-mono font-bold uppercase">Pending</span>
+            )}
           </div>
         </div>
       </div>
@@ -1710,6 +1790,9 @@ function ReferralView() {
                 year: "numeric"
               });
 
+              const hasDeposited = isReferredUserDeposited(ref.referredId, ref.referredEmail);
+              const isComplete = ref.status === "active" || ref.status === "complete" || hasDeposited;
+
               return (
                 <div key={ref.id} className="pt-3.5 first:pt-0 flex justify-between items-center text-xs">
                   <div className="space-y-1.5">
@@ -1717,9 +1800,9 @@ function ReferralView() {
                       <span className="font-bold text-white text-sm block">
                         {ref.referredName}
                       </span>
-                      {ref.status === "active" ? (
+                      {isComplete ? (
                         <span className="text-[8px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
-                          Active Sponsor
+                          Complete
                         </span>
                       ) : (
                         <span className="text-[8px] bg-amber-500/15 border border-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
@@ -1749,9 +1832,9 @@ function ReferralView() {
                     <span className="text-[9px] font-mono text-slate-450 block uppercase tracking-wider font-bold">
                       Commission Earned
                     </span>
-                    {ref.status === "active" ? (
+                    {isComplete ? (
                       <span className="text-sm font-black font-display text-emerald-400 mt-1 font-mono">
-                        +₦{ref.commissionPaid?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        +₦{(ref.commissionPaid || (deposits.find(d => d.userId === ref.referredId || d.userId?.toLowerCase() === ref.referredEmail?.toLowerCase())?.amount || 0) * 0.05).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </span>
                     ) : (
                       <div className="flex flex-col items-end">
@@ -1776,7 +1859,7 @@ function ReferralView() {
 
 // 7. Withdrawal Page
 function WithdrawalView() {
-  const { currentUser, investments, createWithdrawal, navigate } = useFarm();
+  const { currentUser, investments, referrals, createWithdrawal, navigate } = useFarm();
   const [bankName, setBankName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
@@ -1785,10 +1868,33 @@ function WithdrawalView() {
 
   const hasCompletedInvestment = investments.some(inv => inv.status === "matured");
 
+  // Determine user referrals
+  const myReferralsList = referrals.filter(r => 
+    r.referrerId === currentUser?.id || 
+    r.referrerId === `code_${currentUser?.referralCode?.toUpperCase()}` || 
+    r.referrerCode?.toUpperCase() === currentUser?.referralCode?.toUpperCase()
+  );
+
+  // Filter referrals who have made at least one investment entry
+  const investingReferrals = myReferralsList.filter(r => 
+    investments.some(inv => inv.userId === r.referredId)
+  );
+
+  // Filter unique referred users who have invested
+  const uniqueInvestingCount = new Set(investingReferrals.map(r => r.referredId.toLowerCase().trim())).size;
+  const meetsReferralRequirement = currentUser?.isAdmin || uniqueInvestingCount >= 2;
+
+  const canRequestWithdrawal = hasCompletedInvestment && meetsReferralRequirement;
+
   const handleWithdrawalRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hasCompletedInvestment) {
       alert("Restriction: You can only request withdrawals if you have at least one successfully COMPLETED/matured investment plan.");
+      return;
+    }
+
+    if (!meetsReferralRequirement) {
+      alert(`Restriction: Under our security & referral framework, you must invite at least 2 distinct active sponsors who possess active farm investment contracts to unlock cash-out features. Currently, only ${uniqueInvestingCount}/2 of your referrals have invested.`);
       return;
     }
 
@@ -1838,27 +1944,79 @@ function WithdrawalView() {
 
       <ProfileSubTabs active="withdrawal" />
 
-      {/* Account constraint indicator */}
-      {!hasCompletedInvestment ? (
-        <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+      {/* Constraints Checklist Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-2">
+        {/* Requirement 1: Completed Investment */}
+        <div className={`p-4 rounded-xl border flex items-start gap-3 transition-colors ${
+          hasCompletedInvestment 
+            ? "bg-[#00E676]/10 border-[#00E676]/20 text-[#00E676]" 
+            : "bg-red-500/10 border-red-500/20 text-red-400"
+        }`}>
+          {hasCompletedInvestment ? (
+            <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          ) : (
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+          )}
           <div className="space-y-1">
-            <h4 className="text-xs font-bold text-red-400 uppercase tracking-wide font-mono">Withdrawal Blocked</h4>
-            <p className="text-xs text-slate-300 leading-relaxed font-sans">
-              Under our agricultural sponsorship terms, users can withdrawal and request bank cashouts <strong className="text-white">ONLY if they have at least one COMPLETED / matured investment status</strong>.
+            <h4 className="text-xs font-bold uppercase tracking-wider font-mono">1. Mature Contract Status</h4>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              At least one of your agricultural poultry/piggy contract sponsorships must be successfully completed & harvested.
             </p>
-            <p className="text-[11px] text-slate-400 pt-1 font-mono">
-              Please visit the "Active Portfolio" tab to monitor your live lockup timelines.
+            <p className="text-[11px] font-mono font-bold mt-1">
+              Current: {hasCompletedInvestment ? "Verified (Matured Contract Found)" : "Lockup timelines incomplete"}
             </p>
           </div>
         </div>
-      ) : (
-        <div className="bg-[#00E676]/10 border border-[#00E676]/20 p-4 rounded-xl flex items-start gap-3">
-          <CheckCircle className="w-5 h-5 text-[#00E676] shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
-            <h4 className="text-xs font-bold text-[#00E676] uppercase tracking-wide font-mono">Profile Verified</h4>
-            <p className="text-xs text-slate-300">
-              Eligible for payouts. At least one Completed investment detected.
+
+        {/* Requirement 2: Referral Sponsorship Rule */}
+        <div className={`p-4 rounded-xl border flex flex-col gap-3 transition-colors ${
+          meetsReferralRequirement 
+            ? "bg-[#00E676]/10 border-[#00E676]/20 text-[#00E676]" 
+            : "bg-red-500/10 border-red-500/20 text-red-200"
+        }`}>
+          <div className="flex items-start gap-3">
+            {meetsReferralRequirement ? (
+              <CheckCircle className="w-5 h-5 text-[#00E676] shrink-0 mt-0.5" />
+            ) : (
+              <Users className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-1 text-left">
+              <h4 className="text-xs font-bold uppercase tracking-wider font-mono">2. Affiliate Activations</h4>
+              <p className="text-xs text-slate-350 leading-relaxed">
+                Under security bylaws, you are required to invite at least 2 distinct team members who sponsor their own first farm crop cycle.
+              </p>
+            </div>
+          </div>
+
+          {/* Connected visual progress tracker bar */}
+          <div className="space-y-2 pl-8 text-left">
+            <div className="flex justify-between font-mono text-[11px] text-slate-400">
+              <span>Sponsors Activated: {uniqueInvestingCount} / 2 active contracts {currentUser?.isAdmin && "(Admin Pre-Cleared)"}</span>
+              <span className={`font-bold ${meetsReferralRequirement ? "text-[#00E676]" : "text-amber-400"}`}>
+                {Math.round(Math.min(100, (uniqueInvestingCount / 2) * 100))}%
+              </span>
+            </div>
+            
+            <div className="w-full bg-slate-950/70 rounded-full h-2 border border-white/5 overflow-hidden p-[1px]">
+              <div 
+                className={`h-full rounded-full transition-all duration-1000 ${
+                  meetsReferralRequirement ? "bg-[#00E676]" : "bg-gradient-to-r from-amber-500 to-amber-400"
+                }`}
+                style={{ width: `${Math.min(100, (uniqueInvestingCount / 2) * 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Global Status Warning Bar if not eligible */}
+      {!canRequestWithdrawal && (
+        <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <h4 className="text-xs font-bold text-amber-500 uppercase tracking-wide font-mono">Payout Gateway Lock</h4>
+            <p className="text-xs text-slate-300 leading-relaxed mt-0.5">
+              Please finalize the {!hasCompletedInvestment ? "matured contract lockup" : ""}{!hasCompletedInvestment && !meetsReferralRequirement ? " and " : ""}{!meetsReferralRequirement ? "2 investing referrals" : ""} checkpoint above to lift locks on your bank payouts.
             </p>
           </div>
         </div>
@@ -1876,11 +2034,11 @@ function WithdrawalView() {
             <input
               type="text"
               required
-              disabled={!hasCompletedInvestment || loading}
+              disabled={!canRequestWithdrawal || loading}
               value={bankName}
               onChange={(e) => setBankName(e.target.value)}
               placeholder="e.g. Guarantee Trust Bank"
-              className="w-full glass-input rounded-xl p-3.5 text-xs focus:ring-1 focus:ring-gold-accent disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full glass-input rounded-xl p-3.5 text-xs focus:ring-1 focus:ring-gold-accent disabled:opacity-50 disabled:cursor-not-allowed text-white"
             />
           </div>
 
@@ -1889,11 +2047,11 @@ function WithdrawalView() {
             <input
               type="text"
               required
-              disabled={!hasCompletedInvestment || loading}
+              disabled={!canRequestWithdrawal || loading}
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value)}
               placeholder="e.g. 0123456789"
-              className="w-full glass-input rounded-xl p-3.5 text-xs font-mono tracking-wider focus:ring-1 focus:ring-gold-accent disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full glass-input rounded-xl p-3.5 text-xs font-mono tracking-wider focus:ring-1 focus:ring-gold-accent disabled:opacity-50 disabled:cursor-not-allowed text-white"
             />
           </div>
 
@@ -1902,11 +2060,11 @@ function WithdrawalView() {
             <input
               type="text"
               required
-              disabled={!hasCompletedInvestment || loading}
+              disabled={!canRequestWithdrawal || loading}
               value={accountName}
               onChange={(e) => setAccountName(e.target.value)}
               placeholder="e.g. John Doe"
-              className="w-full glass-input rounded-xl p-3.5 text-xs focus:ring-1 focus:ring-gold-accent disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full glass-input rounded-xl p-3.5 text-xs focus:ring-1 focus:ring-gold-accent disabled:opacity-50 disabled:cursor-not-allowed text-white"
             />
           </div>
 
@@ -1916,18 +2074,18 @@ function WithdrawalView() {
               type="number"
               required
               min="100"
-              disabled={!hasCompletedInvestment || loading}
+              disabled={!canRequestWithdrawal || loading}
               value={wAmt}
               onChange={(e) => setWAmt(e.target.value)}
               placeholder="Enter amount to withdraw"
-              className="w-full glass-input rounded-xl p-3.5 text-xs font-mono focus:ring-1 focus:ring-gold-accent disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full glass-input rounded-xl p-3.5 text-xs font-mono focus:ring-1 focus:ring-gold-accent disabled:opacity-50 disabled:cursor-not-allowed text-white"
             />
           </div>
         </div>
 
         <button
           type="submit"
-          disabled={loading || !hasCompletedInvestment || !wAmt || !bankName || !accountNumber || !accountName}
+          disabled={loading || !canRequestWithdrawal || !wAmt || !bankName || !accountNumber || !accountName}
           className="w-full py-3.5 bg-gold-accent hover:bg-yellow-500 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
         >
           {loading ? (
@@ -1955,9 +2113,7 @@ function ProfileView() {
   const [checkingAppwrite, setCheckingAppwrite] = useState(false);
   const [appwriteFeedback, setAppwriteFeedback] = useState<string | null>(null);
 
-  const [hasFallbackActive, setHasFallbackActive] = useState(() => {
-    return typeof window !== "undefined" && localStorage.getItem("fr_fallback_active") === "true";
-  });
+  const [hasFallbackActive, setHasFallbackActive] = useState(false);
 
   const handleClearFallback = () => {
     if (typeof window !== "undefined") {
@@ -2008,6 +2164,101 @@ function ProfileView() {
       </div>
 
       <ProfileSubTabs active="profile" />
+
+      {/* Automated Chrome PWA Sound, Push & Installation Downloader Panel */}
+      <div className="glass-panel p-6 rounded-3xl border border-green-500/15 bg-gradient-to-br from-[#0c1930] to-[#040b17] space-y-5 shadow-xl">
+        <div className="flex items-start gap-3.5">
+          <div className="p-3 bg-green-500/10 rounded-2xl text-xl animate-pulse">
+            📲
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-white font-display">FarmRise PWA Hub & Sounds</h4>
+            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+              Enable instant livestock incubation milestones, sponsor updates, and audit payout alerts by installing the application and initializing chimes.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-slate-950/40 p-4 rounded-2xl border border-white/5 space-y-2.5">
+            <h5 className="text-[11px] font-bold text-white font-display flex items-center gap-1">
+              🔊 Notification Chimes
+            </h5>
+            <div className="flex justify-between items-center py-0.5 text-[10px]">
+              <span className="text-slate-400">Permissions State:</span>
+              <span className={`font-mono font-bold uppercase ${
+                typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" 
+                  ? "text-green-accent" 
+                  : "text-amber-400"
+              }`}>
+                {typeof window !== "undefined" && "Notification" in window ? Notification.permission : "UNSUPPORTED"}
+              </span>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                onClick={async () => {
+                  const granted = await requestBrowserNotificationPermission();
+                  if (granted) {
+                    alert("Permission Gained! Custom premium audio alerts are loaded.");
+                  } else {
+                    alert("Permission request was not accepted. Modify address-bar site locks to enable chimes.");
+                  }
+                }}
+                className="py-2.5 px-3 rounded-xl bg-green-accent hover:opacity-95 text-slate-950 font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
+              >
+                <span>Initialize</span>
+              </button>
+              <button
+                onClick={() => {
+                  playNotificationChime("general");
+                  setTimeout(() => playNotificationChime("milestone"), 500);
+                }}
+                className="py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
+              >
+                <span>Test Sound</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-slate-950/40 p-4 rounded-2xl border border-white/5 space-y-2.5">
+            <h5 className="text-[11px] font-bold text-white font-display flex items-center gap-1">
+              📱 Device App Installation
+            </h5>
+            <div className="flex justify-between items-center py-0.5 text-[10px]">
+              <span className="text-slate-400">Compatible Browser:</span>
+              <span className="font-mono text-green-accent font-bold uppercase">
+                Chrome/PWA OK
+              </span>
+            </div>
+            
+            <button
+              onClick={async () => {
+                const promptEvent = (window as any).deferredInstallPrompt;
+                if (!promptEvent) {
+                  alert(
+                    "📲 To Download & Save FarmRise on Your Device:\n\n" +
+                    "• On Google Chrome (Android/PC): Tap the three dots [⋮] in your browser address bar and select 'Install' or 'Add to Home screen'.\n" +
+                    "• On Apple Safari (iPhone/iPad): Tap the 'Share' button in your browser toolbar, scroll down, and select 'Add to Home Screen'."
+                  );
+                  return;
+                }
+                try {
+                  promptEvent.prompt();
+                  const { outcome } = await promptEvent.userChoice;
+                  console.log(`[FarmRise PWA Hub] User selection: ${outcome}`);
+                  (window as any).deferredInstallPrompt = null;
+                } catch (err) {
+                  console.warn("[FarmRise PWA Hub] Launch failed", err);
+                }
+              }}
+              className="w-full py-2.5 rounded-xl bg-gold-accent hover:opacity-95 text-slate-950 font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
+            >
+              <span>Download & Install App</span>
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Local Sandbox Fallback active warning for regular users */}
       {hasFallbackActive && (
@@ -2078,55 +2329,7 @@ function ProfileView() {
         </div>
       )}
 
-      {/* Appwrite Cloud Sync diagnostics */}
-      {currentUser?.isAdmin && (
-        <div className="glass-panel p-5 rounded-2xl border border-white/5 bg-slate-950/40 space-y-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h4 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
-                💾 Appwrite Database Sync
-              </h4>
-              <p className="text-[10px] text-slate-400 mt-1">Monitor real-time Appwrite server integrations or local mock status.</p>
-            </div>
-            <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded ${isMockAppwrite ? "bg-amber-500/10 text-amber-400" : "bg-emerald-500/10 text-emerald-400"}`}>
-              {isMockAppwrite ? "OFFLINE SANDBOX MODE" : "CLOUD ENABLED"}
-            </span>
-          </div>
 
-          <div className="text-xs space-y-2 font-mono bg-black/30 p-3.5 rounded-xl border border-white/5">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Endpoint:</span>
-              <span className="text-slate-200 text-right truncate max-w-[180px]" title={formatAppwriteEndpoint((import.meta as any).env?.VITE_APPWRITE_ENDPOINT || "")}>
-                {formatAppwriteEndpoint((import.meta as any).env?.VITE_APPWRITE_ENDPOINT || "")}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Project:</span>
-              <span className="text-slate-200">
-                {(import.meta as any).env?.VITE_APPWRITE_PROJECT_ID ? "MAPPED" : "LOCAL FALLBACK"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Database ID:</span>
-              <span className="text-slate-200">{APPWRITE_CONFIG.databaseId}</span>
-            </div>
-          </div>
-
-          <button
-            onClick={checkAppwriteBackend}
-            disabled={checkingAppwrite}
-            className="w-full py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-bold text-white transition-all disabled:opacity-50"
-          >
-            {checkingAppwrite ? "Probing Connection..." : "⚡ Run Live Connection Probe"}
-          </button>
-
-          {appwriteFeedback && (
-            <div className="p-3 bg-white/5 border border-white/5 rounded-xl text-[10px] font-mono text-slate-300 animate-fadeIn">
-              {appwriteFeedback}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Stats list */}
       <div className="glass-panel rounded-2xl p-4 divide-y divide-white/5 space-y-3.5 text-xs font-sans">

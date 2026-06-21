@@ -1,0 +1,38 @@
+{
+  "name": "FarmRise Agriculture",
+  "short_name": "FarmRise",
+  "description": "High-Yield organic agriculture crowdfunding and livestock sponsorships.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#040b17",
+  "theme_color": "#F5B300",
+  "orientation": "portrait",
+  "display_override": ["standalone", "fullscreen", "minimal-ui"],
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["finance", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Invest & Sponsor",
+      "url": "/?shortcut=invest",
+      "description": "Browse active cattle and poultry investment plans"
+    },
+    {
+      "name": "Transactions Audit",
+      "url": "/?shortcut=transactions",
+      "description": "Check current deposit approvals"
+    }
+  ]
+}
