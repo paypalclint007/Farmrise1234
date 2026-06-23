@@ -196,7 +196,10 @@ const mapDepositFromDoc = (doc: any): Deposit => ({
   txRef: doc.txRef || "",
   proofImg: doc.receiptImage || doc.proofImg || "",
   receiptImage: doc.receiptImage || doc.proofImg || "",
-  createdAt: doc.createdAt
+  createdAt: doc.createdAt,
+  aiStatus: doc.aiStatus || "pending",
+  aiReason: doc.aiReason || "",
+  aiAuditTime: doc.aiAuditTime || ""
 });
 
 const mapDepositToDoc = (dep: Deposit) => ({
@@ -206,7 +209,10 @@ const mapDepositToDoc = (dep: Deposit) => ({
   txRef: dep.txRef || "",
   proofImg: dep.receiptImage || dep.proofImg || "",
   receiptImage: dep.receiptImage || dep.proofImg || "",
-  createdAt: dep.createdAt
+  createdAt: dep.createdAt,
+  aiStatus: dep.aiStatus || "pending",
+  aiReason: dep.aiReason || "",
+  aiAuditTime: dep.aiAuditTime || ""
 });
 
 const mapFarmUpdateFromDoc = (doc: any): FarmUpdate => ({
@@ -409,6 +415,18 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isMockSync, setIsMockSync] = useState<boolean>(isMockAppwrite);
+
+  const feedAiAction = async (action: string, details: any) => {
+    try {
+      await fetch("/api/ai/learn-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, details })
+      });
+    } catch (err) {
+      console.warn("Could not sync action to AI memory:", err);
+    }
+  };
 
   // System sound alert tracking refs to prevent duplicate triggers on initial pull
   const isFirstLoadRef = useRef(true);
@@ -644,65 +662,84 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn("Could not retrieve remote appwrite config, falling back to compiled/local:", err);
       }
 
+      // Pre-populate state from local storage cache for instant rendering while we check the session
+      const storedUser = localStorage.getItem("fr_current_user");
+      const storedPlans = localStorage.getItem("fr_plans");
+      const storedDeposits = localStorage.getItem("fr_deposits");
+      const storedInvestments = localStorage.getItem("fr_investments");
+      const storedWithdrawals = localStorage.getItem("fr_withdrawals");
+      const storedUpdates = localStorage.getItem("fr_updates");
+      const storedNotifications = localStorage.getItem("fr_notifications");
+      const storedUsers = localStorage.getItem("fr_users");
+      const storedReferrals = localStorage.getItem("fr_referrals");
+
+      if (storedUser) setCurrentUser(JSON.parse(storedUser));
+      
+      if (storedPlans) {
+        setPlans(JSON.parse(storedPlans));
+      } else {
+        localStorage.setItem("fr_plans", JSON.stringify(DEFAULT_PLANS));
+      }
+
+      const storedCategories = localStorage.getItem("fr_categories");
+      if (storedCategories) {
+        const parsedCats = JSON.parse(storedCategories);
+        if (Array.isArray(parsedCats) && parsedCats.length > 0) {
+          setCategories(parsedCats);
+        } else {
+          setCategories(DEFAULT_CATEGORIES);
+          localStorage.setItem("fr_categories", JSON.stringify(DEFAULT_CATEGORIES));
+        }
+      } else {
+        setCategories(DEFAULT_CATEGORIES);
+        localStorage.setItem("fr_categories", JSON.stringify(DEFAULT_CATEGORIES));
+      }
+
+      if (storedDeposits) setDeposits(JSON.parse(storedDeposits));
+      if (storedInvestments) setInvestments(JSON.parse(storedInvestments));
+      if (storedWithdrawals) setWithdrawals(JSON.parse(storedWithdrawals));
+      
+      if (storedUpdates) {
+        setFarmUpdates(JSON.parse(storedUpdates));
+      } else {
+        localStorage.setItem("fr_updates", JSON.stringify(DEFAULT_UPDATES));
+      }
+
+      if (storedNotifications) setNotifications(JSON.parse(storedNotifications));
+      
+      let uniqueLoadedUsers: UserProfile[] = [];
+      if (storedUsers) {
+        try {
+          const parsedUsers = JSON.parse(storedUsers);
+          if (Array.isArray(parsedUsers)) {
+            const uMap = new Map<string, UserProfile>();
+            parsedUsers.forEach((u: any) => {
+              if (u && u.email) {
+                const key = u.email.toLowerCase().trim();
+                if (key !== "") {
+                  uMap.set(key, u);
+                }
+              }
+            });
+            uniqueLoadedUsers = Array.from(uMap.values());
+          }
+        } catch (e) {
+          console.warn("Deduplicating initial users parsed error", e);
+        }
+      }
+      setUsers(uniqueLoadedUsers);
+      
+      if (storedReferrals) {
+        setReferrals(JSON.parse(storedReferrals));
+      } else {
+        const dummyReferrals: Referral[] = [];
+        setReferrals(dummyReferrals);
+        localStorage.setItem("fr_referrals", JSON.stringify(dummyReferrals));
+      }
+
       // Re-import isMockAppwrite to get its latest live bound value
       const { isMockAppwrite: currentMockState } = await import("../appwrite");
       if (currentMockState) {
-        const storedUser = localStorage.getItem("fr_current_user");
-        const storedPlans = localStorage.getItem("fr_plans");
-        const storedDeposits = localStorage.getItem("fr_deposits");
-        const storedInvestments = localStorage.getItem("fr_investments");
-        const storedWithdrawals = localStorage.getItem("fr_withdrawals");
-        const storedUpdates = localStorage.getItem("fr_updates");
-        const storedNotifications = localStorage.getItem("fr_notifications");
-        const storedUsers = localStorage.getItem("fr_users");
-        const storedReferrals = localStorage.getItem("fr_referrals");
-
-        if (storedUser) setCurrentUser(JSON.parse(storedUser));
-        if (storedPlans) setPlans(JSON.parse(storedPlans));
-        else localStorage.setItem("fr_plans", JSON.stringify(DEFAULT_PLANS));
-
-        const storedCategories = localStorage.getItem("fr_categories");
-        if (storedCategories) setCategories(JSON.parse(storedCategories));
-        else localStorage.setItem("fr_categories", JSON.stringify(DEFAULT_CATEGORIES));
-
-        if (storedDeposits) setDeposits(JSON.parse(storedDeposits));
-        if (storedInvestments) setInvestments(JSON.parse(storedInvestments));
-        if (storedWithdrawals) setWithdrawals(JSON.parse(storedWithdrawals));
-        if (storedUpdates) setFarmUpdates(JSON.parse(storedUpdates));
-        else localStorage.setItem("fr_updates", JSON.stringify(DEFAULT_UPDATES));
-
-        if (storedNotifications) setNotifications(JSON.parse(storedNotifications));
-        
-        let uniqueLoadedUsers: UserProfile[] = [];
-        if (storedUsers) {
-          try {
-            const parsedUsers = JSON.parse(storedUsers);
-            if (Array.isArray(parsedUsers)) {
-              const uMap = new Map<string, UserProfile>();
-              parsedUsers.forEach((u: any) => {
-                if (u && u.email) {
-                  const key = u.email.toLowerCase().trim();
-                  if (key !== "") {
-                    uMap.set(key, u);
-                  }
-                }
-              });
-              uniqueLoadedUsers = Array.from(uMap.values());
-            }
-          } catch (e) {
-            console.warn("Deduplicating initial users parsed error", e);
-          }
-        }
-        setUsers(uniqueLoadedUsers);
-        
-        if (storedReferrals) {
-          setReferrals(JSON.parse(storedReferrals));
-        } else {
-          const dummyReferrals: Referral[] = [];
-          setReferrals(dummyReferrals);
-          localStorage.setItem("fr_referrals", JSON.stringify(dummyReferrals));
-        }
-        
         setLoading(false);
         setTimeout(() => {
           if (storedUser) {
@@ -735,6 +772,9 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (typeof window === "undefined") return [];
         if (collId === APPWRITE_CONFIG.collections.plans) {
           return DEFAULT_PLANS;
+        }
+        if (collId === "categories") {
+          return DEFAULT_CATEGORIES;
         }
         if (collId === APPWRITE_CONFIG.collections.farmUpdates) {
           return DEFAULT_UPDATES;
@@ -862,7 +902,88 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Fetch real Appwrite Database lists during active sessions
   const fetchAllData = async (userProfile: UserProfile) => {
-    if (isMockAppwrite) return;
+    if (isMockAppwrite) {
+      // In mock mode, check localStorage for updates made in other views/screens or windows
+      try {
+        const storedUser = localStorage.getItem("fr_current_user");
+        const storedDeposits = localStorage.getItem("fr_deposits");
+        const storedInvestments = localStorage.getItem("fr_investments");
+        const storedWithdrawals = localStorage.getItem("fr_withdrawals");
+        const storedNotifications = localStorage.getItem("fr_notifications");
+        const storedUsers = localStorage.getItem("fr_users");
+        const storedReferrals = localStorage.getItem("fr_referrals");
+
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          if (JSON.stringify(parsedUser) !== JSON.stringify(currentUser)) {
+            setCurrentUser(parsedUser);
+          }
+        }
+        if (storedDeposits) {
+          const parsedDeps = JSON.parse(storedDeposits);
+          if (JSON.stringify(parsedDeps) !== JSON.stringify(deposits)) {
+            setDeposits(parsedDeps);
+          }
+        }
+        if (storedInvestments) {
+          const parsedInvestments = JSON.parse(storedInvestments);
+          if (JSON.stringify(parsedInvestments) !== JSON.stringify(investments)) {
+            setInvestments(parsedInvestments);
+          }
+        }
+        if (storedWithdrawals) {
+          const parsedWithdrawals = JSON.parse(storedWithdrawals);
+          if (JSON.stringify(parsedWithdrawals) !== JSON.stringify(withdrawals)) {
+            setWithdrawals(parsedWithdrawals);
+          }
+        }
+        if (storedNotifications) {
+          const parsedNotifs = JSON.parse(storedNotifications);
+          if (JSON.stringify(parsedNotifs) !== JSON.stringify(notifications)) {
+            setNotifications(parsedNotifs);
+          }
+        }
+        if (storedUsers) {
+          const parsedUsers = JSON.parse(storedUsers);
+          if (JSON.stringify(parsedUsers) !== JSON.stringify(users)) {
+            setUsers(parsedUsers);
+          }
+        }
+        if (storedReferrals) {
+          const parsedReferrals = JSON.parse(storedReferrals);
+          if (JSON.stringify(parsedReferrals) !== JSON.stringify(referrals)) {
+            setReferrals(parsedReferrals);
+          }
+        }
+      } catch (err) {
+        console.warn("Error loading mock updates from local storage in fetchAllData:", err);
+      }
+      return;
+    }
+
+    if (!userProfile || !userProfile.id) return;
+
+    // Load fresh current user profile from database to reflect Admin actions (deposit/withdrawal approval, balance adjustments, ban status)
+    try {
+      const doc = await databases.getDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.users,
+        userProfile.id
+      );
+      if (doc) {
+        const freshProfile = mapUserFromDoc(doc);
+        // Securely enforce that only paypalclint007@gmail.com can be an administrator
+        freshProfile.isAdmin = (freshProfile.email || "").toLowerCase() === "paypalclint007@gmail.com";
+        setCurrentUser(freshProfile);
+        try {
+          localStorage.setItem("fr_current_user", JSON.stringify(freshProfile));
+        } catch (err) {
+          console.warn("localStorage push fail for fresh current_user", err);
+        }
+      }
+    } catch (e) {
+      console.warn("Error refetching current user profile in fetchAllData:", e);
+    }
 
     // Inside fetchAllData we proxy to outer safeFetchCollectionOuter
     const safeFetchCollection = async (collectionId: string, queries: any[] = []): Promise<any[]> => {
@@ -896,9 +1017,12 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (err) {
           console.warn("localStorage push fail for categories", err);
         }
+      } else {
+        setCategories(prev => prev.length > 0 ? prev : DEFAULT_CATEGORIES);
       }
     } catch (e) {
       console.warn("Error processing categories loaded:", e);
+      setCategories(prev => prev.length > 0 ? prev : DEFAULT_CATEGORIES);
     }
 
     // Load Updates
@@ -1152,9 +1276,12 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (err) {
           console.warn("localStorage push fail for categories", err);
         }
+      } else {
+        setCategories(prev => prev.length > 0 ? prev : DEFAULT_CATEGORIES);
       }
     } catch (e) {
       console.warn("Error fetching categories in public fetch:", e);
+      setCategories(prev => prev.length > 0 ? prev : DEFAULT_CATEGORIES);
     }
 
     // Load Updates publicly
@@ -1857,6 +1984,78 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedNotifs = [newNotif, ...notifications];
       setNotifications(updatedNotifs);
       syncLocal("fr_notifications", updatedNotifs);
+
+      // Trigger background AI receipt audit (Mock Appwrite Mode)
+      setTimeout(async () => {
+        try {
+          const response = await fetch("/api/ai/audit-deposit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              depositId: newDeposit.id,
+              userId: newDeposit.userId,
+              amount: newDeposit.amount,
+              txRef: newDeposit.txRef,
+              proofImg: newDeposit.proofImg,
+              createdAt: newDeposit.createdAt
+            })
+          });
+          const auditData = await response.json();
+          if (auditData.success) {
+            const aiStatus: "legit" | "discrepancy" | "error" = auditData.status || "legit";
+            const aiReason = auditData.reason || "Verified automatically.";
+            const aiAuditTime = new Date().toISOString();
+
+            setDeposits(prev => {
+              const updated = prev.map(d => {
+                if (d.id === newDeposit.id) {
+                  return { ...d, aiStatus, aiReason, aiAuditTime };
+                }
+                return d;
+              });
+              syncLocal("fr_deposits", updated);
+              return updated;
+            });
+
+            if (aiStatus === "legit") {
+              // Auto-approve!
+              await approveDeposit(newDeposit.id);
+              // Send admin success notification
+              const aiNotif: Notification = {
+                id: "not_ai_" + Date.now(),
+                userId: currentUser.id,
+                title: "AI Co-Pilot Auto-Approved! 🤖💚",
+                message: `Your deposit of ₦${amount.toLocaleString()} was successfully auto-reviewed and credited to your wallet in real-time.`,
+                isRead: false,
+                createdAt: new Date().toISOString()
+              };
+              setNotifications(prev => {
+                const updated = [aiNotif, ...prev];
+                syncLocal("fr_notifications", updated);
+                return updated;
+              });
+            } else {
+              // Discrepancy or error - push to admin
+              const aiNotif: Notification = {
+                id: "not_ai_fail_" + Date.now(),
+                userId: currentUser.id,
+                title: "Pending Manual Review 🧑‍💻",
+                message: `AI detected details requiring human review: ${aiReason}. Pushed to the Admin workspace.`,
+                isRead: false,
+                createdAt: new Date().toISOString()
+              };
+              setNotifications(prev => {
+                const updated = [aiNotif, ...prev];
+                syncLocal("fr_notifications", updated);
+                return updated;
+              });
+            }
+          }
+        } catch (e) {
+          console.error("AI automated deposit background review failed:", e);
+        }
+      }, 1500);
+
       return;
     }
 
@@ -1908,6 +2107,70 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error("Live referral check failed during deposit create:", err);
         }
       }
+
+      // Trigger background AI receipt audit (Live DB Mode)
+      setTimeout(async () => {
+        try {
+          const response = await fetch("/api/ai/audit-deposit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              depositId: newDeposit.id,
+              userId: newDeposit.userId,
+              amount: newDeposit.amount,
+              txRef: newDeposit.txRef,
+              proofImg: newDeposit.proofImg,
+              createdAt: newDeposit.createdAt
+            })
+          });
+          const auditData = await response.json();
+          if (auditData.success) {
+            const aiStatus = auditData.status || "legit";
+            const aiReason = auditData.reason || "Verified automatically by AI Co-Pilot.";
+            const aiAuditTime = new Date().toISOString();
+
+            await databases.updateDocument(
+              APPWRITE_CONFIG.databaseId,
+              APPWRITE_CONFIG.collections.deposits,
+              newDeposit.id,
+              {
+                aiStatus,
+                aiReason,
+                aiAuditTime
+              }
+            );
+
+            // Auto-approve if verified
+            if (aiStatus === "legit") {
+              await approveDeposit(newDeposit.id);
+            } else {
+              // Flag discrepancy/error to Admin
+              const adminNotifId = "not_ai_err_" + Date.now();
+              await databases.createDocument(
+                APPWRITE_CONFIG.databaseId,
+                APPWRITE_CONFIG.collections.notifications,
+                adminNotifId,
+                {
+                  id: adminNotifId,
+                  userId: "admin_user",
+                  title: "AI Co-Pilot Alert 🤖⚠️",
+                  message: `Deposit ₦${amount} by user has a verification flag: ${aiReason}`,
+                  isRead: false,
+                  createdAt: new Date().toISOString()
+                }
+              ).catch(e => console.warn(e));
+            }
+
+            if (triggerManualSync) {
+              triggerManualSync();
+            }
+          }
+        } catch (e) {
+          console.error("Live AI audit error in background:", e);
+        }
+      }, 1500);
+
+      await fetchAllData(currentUser);
     } catch (err) {
       handleAppwriteError(err, OperationType.CREATE, `deposits/${newDeposit.id}`);
     }
@@ -2166,6 +2429,8 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
 
       const activeInvestingRefs = myRefs.filter(r => 
+        r.status === "active" || 
+        r.status === "complete" || 
         investments.some(inv => inv.userId === r.referredId)
       );
 
@@ -2256,6 +2521,13 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const approveDeposit = async (id: string) => {
     const target = deposits.find(d => d.id === id);
     if (!target || target.status !== "pending") return;
+
+    const targetUser = users.find(u => u.id === target.userId) || (currentUser?.id === target.userId ? currentUser : null);
+    feedAiAction("approve_deposit", {
+      amount: target.amount,
+      username: targetUser?.name || "User",
+      txRef: target.txRef || "N/A"
+    });
 
     if (isMockAppwrite) {
       const updatedDeps = deposits.map(d => d.id === id ? { ...d, status: "approved" as const } : d);
@@ -2500,6 +2772,14 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const target = deposits.find(d => d.id === id);
     if (!target || target.status !== "pending") return;
 
+    const targetUser = users.find(u => u.id === target.userId) || (currentUser?.id === target.userId ? currentUser : null);
+    feedAiAction("reject_deposit", {
+      amount: target.amount,
+      username: targetUser?.name || "User",
+      txRef: target.txRef || "N/A",
+      reason: "Unverified receipt slip"
+    });
+
     if (isMockAppwrite) {
       const updatedDeps = deposits.map(d => d.id === id ? { ...d, status: "rejected" as const } : d);
       setDeposits(updatedDeps);
@@ -2554,6 +2834,13 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const approveWithdrawal = async (id: string) => {
     const target = withdrawals.find(w => w.id === id);
     if (!target || target.status !== "pending") return;
+
+    const targetUser = users.find(u => u.id === target.userId) || (currentUser?.id === target.userId ? currentUser : null);
+    feedAiAction("approve_withdrawal", {
+      amount: target.amount,
+      username: targetUser?.name || "User",
+      accountNumber: target.accountDetails || "N/A"
+    });
 
     if (isMockAppwrite) {
       const targetUser = users.find(u => u.id === target.userId) || (currentUser?.id === target.userId ? currentUser : null);
@@ -2656,6 +2943,13 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const rejectWithdrawal = async (id: string) => {
     const target = withdrawals.find(w => w.id === id);
     if (!target || target.status !== "pending") return;
+
+    const targetUser = users.find(u => u.id === target.userId) || (currentUser?.id === target.userId ? currentUser : null);
+    feedAiAction("reject_withdrawal", {
+      amount: target.amount,
+      username: targetUser?.name || "User",
+      reason: "Withdrawal parameters check fail"
+    });
 
     if (isMockAppwrite) {
       const updatedWths = withdrawals.map(w => w.id === id ? { ...w, status: "rejected" as const } : w);
@@ -2885,6 +3179,13 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const banUser = async (userId: string, isBanned: boolean) => {
+    const targetUser = users.find(u => u.id === userId) || (currentUser?.id === userId ? currentUser : null);
+    feedAiAction(isBanned ? "ban_user" : "unban_user", {
+      username: targetUser?.name || "User",
+      email: targetUser?.email || "N/A",
+      reason: "Administrative policy directive"
+    });
+
     if (isMockAppwrite) {
       const updated = users.map(u => u.id === userId ? { ...u, isBanned } : u);
       setUsers(updated);

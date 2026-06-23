@@ -4,7 +4,7 @@ import {
   Wallet, TrendingUp, Compass, Calendar, User, Share2, 
   ArrowDownCircle, ArrowUpCircle, CheckCircle, Clock, Percent,
   ChevronRight, ShieldCheck, AlertTriangle, HelpCircle, PlusCircle, Power,
-  Users, UserCheck, Copy, UploadCloud, Check, FileImage, RefreshCw
+  Users, UserCheck, Copy, UploadCloud, Check, FileImage, RefreshCw, Sparkles
 } from "lucide-react";
 import { isMockAppwrite, testConnection, APPWRITE_CONFIG, verifyDepositsCollection, formatAppwriteEndpoint } from "../appwrite";
 import { motion } from "motion/react";
@@ -50,10 +50,72 @@ function DashboardView() {
     navigate 
   } = useFarm();
 
+  // User AI personal farm co-pilot assistant state hooks
+  const [isAiOpen, setIsAiOpen] = useState(false);
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiMessages, setAiMessages] = useState<Array<{role: "user" | "assistant", content: string, time: string}>>([
+    {
+      role: "assistant",
+      content: `Hello ${currentUser?.name || "Investor"}! 🤖 I am your FarmRise AI Companion. I can summarize your poultry and piggery portfolios, look up your balance details, or trace your referral commissions logs. How may I guide you on the farm today?`,
+      time: new Date().toLocaleTimeString()
+    }
+  ]);
+
+  const handleSendUserAi = async (customText?: string) => {
+    const text = customText || aiInput;
+    if (!text.trim() || aiLoading) return;
+
+    const newMsg = {
+      role: "user" as const,
+      content: text,
+      time: new Date().toLocaleTimeString()
+    };
+
+    setAiMessages(prev => [...prev, newMsg]);
+    if (!customText) setAiInput("");
+    setAiLoading(true);
+
+    try {
+      const res = await fetch("/api/ai/chat-assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          history: aiMessages.map(m => ({ role: m.role, content: m.content })),
+          context: {
+            user: currentUser,
+            investments: investments.filter(i => i.userId === currentUser?.id),
+            referrals: referrals.filter(r => r.referrerId === currentUser?.id || r.referrerCode === currentUser?.referralCode),
+            deposits: deposits.filter(d => d.userId === currentUser?.id)
+          }
+        })
+      });
+      const data = await res.json();
+      if (data.reply) {
+        setAiMessages(prev => [...prev, {
+          role: "assistant",
+          content: data.reply,
+          time: new Date().toLocaleTimeString()
+        }]);
+      } else {
+        throw new Error("No co-pilot reply retrieved.");
+      }
+    } catch (err: any) {
+      setAiMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ Under agricultural simulated conditions, I am analyzing your digital balance parameters. How can I help you invest further?`,
+        time: new Date().toLocaleTimeString()
+      }]);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   // 4 Cards metrics calculations
   const totalBalance = currentUser?.balance || 0;
   
-  const activeSponsors = investments.filter(i => i.status === "active");
+  const activeSponsors = investments.filter(i => i.userId === currentUser?.id && i.status === "active");
   const activeSponsorsCount = activeSponsors.length;
   const totalActiveInvestments = activeSponsors.reduce((sum, i) => sum + i.amount, 0);
 
@@ -72,35 +134,41 @@ function DashboardView() {
   const pigMaxROI = pigPlans.length ? Math.max(...pigPlans.map(p => p.profitPercent)) : 35;
 
   // Assemble comprehensive unified recent activities:
-  const depActivities = deposits.map(d => ({
-    id: d.id,
-    type: "deposit" as const,
-    title: "Capital Deposit Added",
-    subtitle: `Ref: ${d.txRef}`,
-    amount: d.amount,
-    status: d.status,
-    date: d.createdAt
-  }));
+  const depActivities = deposits
+    .filter(d => d.userId === currentUser?.id)
+    .map(d => ({
+      id: d.id,
+      type: "deposit" as const,
+      title: "Capital Deposit Added",
+      subtitle: `Ref: ${d.txRef}`,
+      amount: d.amount,
+      status: d.status,
+      date: d.createdAt
+    }));
 
-  const invActivities = investments.map(i => ({
-    id: i.id,
-    type: "investment" as const,
-    title: `${i.planName} Active Contract`,
-    subtitle: `${i.durationDays} Days lockup duration`,
-    amount: i.amount,
-    status: i.status === "matured" ? "matured" : "active",
-    date: i.createdAt
-  }));
+  const invActivities = investments
+    .filter(i => i.userId === currentUser?.id)
+    .map(i => ({
+      id: i.id,
+      type: "investment" as const,
+      title: `${i.planName} Active Contract`,
+      subtitle: `${i.durationDays} Days lockup duration`,
+      amount: i.amount,
+      status: i.status === "matured" ? "matured" : "active",
+      date: i.createdAt
+    }));
 
-  const withActivities = withdrawals.map(w => ({
-    id: w.id,
-    type: "withdrawal" as const,
-    title: "Yield Cashout Payout Request",
-    subtitle: "Bank Transfer Cashout",
-    amount: w.amount,
-    status: w.status,
-    date: w.createdAt
-  }));
+  const withActivities = withdrawals
+    .filter(w => w.userId === currentUser?.id)
+    .map(w => ({
+      id: w.id,
+      type: "withdrawal" as const,
+      title: "Yield Cashout Payout Request",
+      subtitle: "Bank Transfer Cashout",
+      amount: w.amount,
+      status: w.status,
+      date: w.createdAt
+    }));
 
   const refActivities = referrals
     .filter(r => (r.referrerId === currentUser?.id || r.referrerId === `code_${currentUser?.referralCode?.toUpperCase()}` || r.referrerCode?.toUpperCase() === currentUser?.referralCode?.toUpperCase()) && r.status === "active" && r.commissionPaid > 0)
@@ -150,11 +218,115 @@ function DashboardView() {
         </div>
         {currentUser?.isAdmin && (
           <button 
+            type="button"
             onClick={() => navigate("admin-dashboard")}
             className="text-[10px] font-extrabold px-3 py-1.5 rounded-lg bg-amber-400 text-slate-950 shadow-lg uppercase tracking-wider cursor-pointer hover:bg-amber-300 transition-all active:scale-95 shrink-0"
           >
             ⚙️ Admin Console
           </button>
+        )}
+      </div>
+
+      {/* AI Farm Companion Assistant Collapsible Core Panel */}
+      <div className="glass-panel p-4.5 rounded-2xl border-purple-500/10 bg-purple-950/5 relative overflow-hidden text-left">
+        <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsAiOpen(!isAiOpen)}>
+          <div className="flex items-center gap-2.5">
+            <div className={`p-2.5 rounded-xl bg-purple-500/15 text-purple-400 ${isAiOpen ? 'animate-none' : 'animate-pulse'}`}>
+              <Sparkles className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-white tracking-wide uppercase font-mono flex items-center gap-2">
+                FarmRise Smart AI Co-Pilot
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+              </h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Collapsible agricultural advisor & stats analyzer</p>
+            </div>
+          </div>
+          <button 
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setIsAiOpen(!isAiOpen); }}
+            className="text-[10px] font-mono text-slate-450 bg-white/5 border border-white/5 hover:text-white px-3 py-1.5 rounded-lg transition-all cursor-pointer"
+          >
+            {isAiOpen ? "Minimize ▲" : "Enquire Now ▼"}
+          </button>
+        </div>
+
+        {isAiOpen && (
+          <div className="mt-4 pt-4 border-t border-white/5 space-y-4 animate-fadeIn">
+            
+            {/* Thread log */}
+            <div className="bg-slate-950/70 rounded-xl p-3 border border-white/5 max-h-[190px] overflow-y-auto scrollbar-custom space-y-3 flex flex-col font-mono text-[11px]">
+              {aiMessages.map((msg, index) => (
+                <div 
+                  key={index}
+                  className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'}`}
+                >
+                  <span className="text-[8px] text-slate-500 mb-0.5 px-0.5">{msg.time}</span>
+                  <div className={`p-2.5 rounded-xl break-words leading-relaxed text-left ${msg.role === 'user' ? 'bg-purple-600 text-white rounded-tr-none' : 'bg-slate-900 border border-white/10 text-slate-200 rounded-tl-none'}`} style={{ whiteSpace: "pre-wrap" }}>
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {aiLoading && (
+                <div className="self-start flex flex-col items-start font-mono">
+                  <span className="text-[8px] text-slate-500 mb-0.5">Advisor modeling...</span>
+                  <div className="bg-slate-900 border border-white/10 text-slate-400 p-2.5 rounded-xl rounded-tl-none flex gap-1.5 items-center">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Action Suggested Questions */}
+            <div className="flex flex-wrap gap-1.5">
+              <button 
+                type="button"
+                onClick={() => handleSendUserAi("Summarize my current investment cycle yields and tell me my available NGN balance.")}
+                disabled={aiLoading}
+                className="text-[9px] font-mono px-2.5 py-1 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-purple-300 cursor-pointer"
+              >
+                📊 Portfolio & Balance Audit
+              </button>
+              <button 
+                type="button"
+                onClick={() => handleSendUserAi("How many active referred sponsors do I have right now? Am I allowed to withdraw my cash payouts?")}
+                disabled={aiLoading}
+                className="text-[9px] font-mono px-2.5 py-1 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-purple-300 cursor-pointer"
+              >
+                👥 Referral Payout Check
+              </button>
+              <button 
+                type="button"
+                onClick={() => handleSendUserAi("Which animal incubator should I invest in next based on my current wallet funds?")}
+                disabled={aiLoading}
+                className="text-[9px] font-mono px-2.5 py-1 bg-white/5 hover:bg-white/10 rounded border border-white/5 text-purple-300 cursor-pointer"
+              >
+                🐖 Recommend Best Livestock Plan
+              </button>
+            </div>
+
+            {/* Dialog Input Form */}
+            <form onSubmit={(e) => { e.preventDefault(); handleSendUserAi(); }} className="flex gap-2">
+              <input
+                type="text"
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+                disabled={aiLoading}
+                placeholder="Ask your smart farm guide anything..."
+                className="flex-1 bg-slate-950/80 px-3 py-2 rounded-xl border border-white/10 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-purple-500 disabled:opacity-50"
+              />
+              <button 
+                type="submit"
+                disabled={aiLoading || !aiInput.trim()}
+                className="px-4.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-xs text-white font-bold tracking-wider font-mono uppercase cursor-pointer disabled:opacity-50 transition-all"
+              >
+                Send
+              </button>
+            </form>
+
+          </div>
         )}
       </div>
 
@@ -1257,7 +1429,7 @@ function PlanDetailsView() {
 
 // 5. Active Investments (Portfolio View)
 function ActiveInvestmentsView() {
-  const { investments, plans, withdrawMaturedInvestment, navigate } = useFarm();
+  const { investments, plans, withdrawMaturedInvestment, navigate, currentUser } = useFarm();
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   
   // Real-time ticking clock state to update the countdowns and maturity states every single second
@@ -1271,12 +1443,14 @@ function ActiveInvestmentsView() {
   }, []);
   
   const activeSponsors = investments.filter(i => {
+    // Only current user's investments
+    if (i.userId !== currentUser?.id) return false;
     // If matured status, keep under maturedSponsors below
     if (i.status === "matured") return false;
     // Otherwise, it is an active contract (it handles its own visual state when now >= maturesDate)
     return i.status === "active";
   });
-  const maturedSponsors = investments.filter(i => i.status === "matured");
+  const maturedSponsors = investments.filter(i => i.userId === currentUser?.id && i.status === "matured");
 
   const handleWithdraw = async (invId: string) => {
     if (withdrawingId) return;
@@ -1649,6 +1823,8 @@ function ReferralView() {
 
   // Filter unique referred users who have completed at least one investment sponsorship contract
   const investingReferrals = myReferrals.filter(r => 
+    r.status === "active" || 
+    r.status === "complete" || 
     investments.some(inv => inv.userId === r.referredId)
   );
   const uniqueInvestingCount = new Set(investingReferrals.map(r => r.referredId.toLowerCase().trim())).size;
@@ -1941,7 +2117,7 @@ function WithdrawalView() {
   const [wAmt, setWAmt] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const hasCompletedInvestment = investments.some(inv => inv.status === "matured");
+  const hasCompletedInvestment = investments.some(inv => inv.userId === currentUser?.id && inv.status === "matured");
 
   // Determine user referrals
   const myReferralsList = referrals.filter(r => 
@@ -1952,6 +2128,8 @@ function WithdrawalView() {
 
   // Filter referrals who have made at least one investment entry
   const investingReferrals = myReferralsList.filter(r => 
+    r.status === "active" || 
+    r.status === "complete" || 
     investments.some(inv => inv.userId === r.referredId)
   );
 

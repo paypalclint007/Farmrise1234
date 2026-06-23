@@ -675,6 +675,49 @@ function DepositApprovalView() {
                 </div>
               </div>
 
+              {/* AI Co-Pilot Verification Details */}
+              <div className={`p-3.5 rounded-xl border ${
+                dep.aiStatus === "legit" 
+                  ? "bg-emerald-950/20 border-emerald-500/20" 
+                  : dep.aiStatus === "discrepancy" 
+                  ? "bg-amber-950/20 border-amber-500/20" 
+                  : dep.aiStatus === "error" 
+                  ? "bg-rose-950/20 border-rose-500/10" 
+                  : "bg-slate-950/40 border-white/5"
+              } space-y-2 text-left`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className={`w-3.5 h-3.5 ${
+                      dep.aiStatus === "legit" 
+                        ? "text-emerald-450 animate-pulse" 
+                        : dep.aiStatus === "discrepancy" 
+                        ? "text-amber-400" 
+                        : "text-slate-400"
+                    }`} />
+                    <span className="text-[11px] font-bold text-slate-300">AI Admin Companion Audit</span>
+                  </div>
+                  <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                    dep.aiStatus === "legit"
+                      ? "bg-emerald-950 text-emerald-400"
+                      : dep.aiStatus === "discrepancy"
+                      ? "bg-amber-950/60 text-amber-400"
+                      : dep.aiStatus === "error"
+                      ? "bg-rose-950/40 text-rose-400"
+                      : "bg-slate-800 text-slate-450"
+                  }`}>
+                    {dep.aiStatus === "legit" ? "🤖 Legit / Verified" : dep.aiStatus === "discrepancy" ? "⚠️ Discrepancy Flag" : dep.aiStatus === "error" ? "❌ Scan Error" : "⏳ Reviewing..."}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed font-mono italic">
+                  {dep.aiReason || "AI assistant is analyzing date stamps, timing patterns, and currency volume parameters for this wire receipt."}
+                </p>
+                {dep.aiAuditTime && (
+                  <span className="text-[8px] text-slate-500 block font-mono">
+                    System Checked: {new Date(dep.aiAuditTime).toLocaleString()}
+                  </span>
+                )}
+              </div>
+
               {dep.proofImg && (
                 <div className="w-full h-44 rounded-xl overflow-hidden border border-white/5 relative group bg-black">
                   <img src={dep.proofImg} alt="Proof of wire payment" referrerPolicy="no-referrer" className="w-full h-full object-cover opacity-80" />

@@ -24,6 +24,9 @@ export interface Deposit {
   proofImg?: string;
   receiptImage?: string;
   createdAt: string;
+  aiStatus?: "pending" | "legit" | "discrepancy" | "error";
+  aiReason?: string;
+  aiAuditTime?: string;
 }
 
 export interface InvestmentPlan {

@@ -43,7 +43,7 @@ interface LogEntry {
 }
 
 export default function AdminLiveDashboard() {
-  const { navigate } = useFarm();
+  const { navigate, deposits = [], users = [], investments = [], withdrawals = [] } = useFarm();
   
   // Real-time live state variables
   const [stats, setStats] = useState<LiveStats | null>(null);
@@ -53,6 +53,120 @@ export default function AdminLiveDashboard() {
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number>(5); // Default polling 5s
   const [isSyncing, setIsSyncing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+
+  // AI Co-Pilot memory states
+  const [learnings, setLearnings] = useState<any[]>([]);
+  const [teachInput, setTeachInput] = useState("");
+  const [isTeaching, setIsTeaching] = useState(false);
+
+  const fetchLearnings = async () => {
+    try {
+      const res = await fetch("/api/ai/learnings");
+      const data = await res.json();
+      if (data.success) {
+        setLearnings(data.learnings || []);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch learnings:", err);
+    }
+  };
+
+  const handleTeach = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!teachInput.trim() || isTeaching) return;
+    setIsTeaching(true);
+    try {
+      const res = await fetch("/api/ai/learn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memory: teachInput, category: "admin_instruction" })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addLog("Taught AI Co-Pilot new management rule: " + teachInput, "success");
+        setTeachInput("");
+        fetchLearnings();
+      }
+    } catch (err) {
+      console.error("Failed to teach AI:", err);
+    } finally {
+      setIsTeaching(false);
+    }
+  };
+
+  // AI Co-Pilot Assistant State variables
+  const [aiChatMessages, setAiChatMessages] = useState<Array<{role: "user" | "assistant", content: string, time: string}>>([
+    {
+      role: "assistant",
+      content: "Hello Administrator! 🤖 I am your AI Co-Pilot & Security Auditor. I monitor all wallet transactions, user balances, and system health. You can converse with me directly, ask for ledger audit reports, query active contracts, or request me to draft general bulletin notices.",
+      time: new Date().toLocaleTimeString()
+    }
+  ]);
+  const [aiChatInput, setAiChatInput] = useState("");
+  const [aiChatLoading, setAiChatLoading] = useState(false);
+
+  const handleSendAiMessage = async (customMsg?: string) => {
+    const textToSend = customMsg || aiChatInput;
+    if (!textToSend.trim() || aiChatLoading) return;
+
+    const userMsg = {
+      role: "user" as const,
+      content: textToSend,
+      time: new Date().toLocaleTimeString()
+    };
+
+    setAiChatMessages(prev => [...prev, userMsg]);
+    if (!customMsg) setAiChatInput("");
+    setAiChatLoading(true);
+
+    try {
+      const response = await fetch("/api/ai/chat-assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: textToSend,
+          history: aiChatMessages.map(m => ({
+            role: m.role,
+            content: m.content
+          })),
+          context: {
+            stats: stats,
+            pendingDeposits: deposits.filter(d => d.status === "pending").map(d => ({
+              id: d.id,
+              userId: d.userId,
+              amount: d.amount,
+              txRef: d.txRef,
+              createdAt: d.createdAt,
+              aiStatus: d.aiStatus,
+              aiReason: d.aiReason
+            })),
+            users: users.map(u => ({ id: u.id, name: u.name, balance: u.balance, role: u.isAdmin ? "admin" : "user" })),
+            investments: investments.map(i => ({ id: i.id, planName: i.planName, amount: i.amount, status: i.status }))
+          }
+        })
+      });
+
+      const data = await response.json();
+      if (data.reply) {
+        setAiChatMessages(prev => [...prev, {
+          role: "assistant",
+          content: data.reply,
+          time: new Date().toLocaleTimeString()
+        }]);
+      } else {
+        throw new Error("Empty AI co-pilot reply.");
+      }
+    } catch (err: any) {
+      console.error("AI Admin assistant session communication error:", err);
+      setAiChatMessages(prev => [...prev, {
+        role: "assistant",
+        content: `⚠️ Co-Pilot connection failure: ${err.message || "Failed to reach backend co-pilot model services."}`,
+        time: new Date().toLocaleTimeString()
+      }]);
+    } finally {
+      setAiChatLoading(false);
+    }
+  };
 
   const addLog = useCallback((message: string, type: "success" | "info" | "warning" | "error" = "info") => {
     const time = new Date().toLocaleTimeString();
@@ -222,11 +336,13 @@ export default function AdminLiveDashboard() {
   // Handle active polling
   useEffect(() => {
     fetchLiveStatsFromAppwrite();
+    fetchLearnings();
 
     if (refreshIntervalSec === 0) return;
 
     const pollingTimer = setInterval(() => {
       fetchLiveStatsFromAppwrite();
+      fetchLearnings();
     }, refreshIntervalSec * 1000);
 
     return () => clearInterval(pollingTimer);
@@ -539,6 +655,196 @@ export default function AdminLiveDashboard() {
           </div>
         </>
       ) : null}
+
+      {/* 3.5 AI Personal Assistant Console */}
+      <div className="glass-panel p-5 rounded-2xl border-purple-500/10 bg-purple-950/5 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl -z-10" />
+        
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Main Chat Assistant Pane */}
+          <div className="lg:col-span-2">
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-white/5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400">
+                  <Sparkles className="w-5 h-5 animate-pulse" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-xs font-bold text-white tracking-wide uppercase font-mono">FarmRise Admin AI Co-Pilot</h3>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[9px] font-mono text-emerald-400 uppercase tracking-widest font-bold">Active Assistant</span>
+                  </div>
+                </div>
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => setAiChatMessages([
+                  {
+                    role: "assistant",
+                    content: "Hello Admin! System memory refreshed. How may I optimize your administration parameters or analyze financial files today?",
+                    time: new Date().toLocaleTimeString()
+                  }
+                ])}
+                className="text-[9px] font-mono text-slate-400 hover:text-white border border-white/5 px-2 py-1 rounded bg-white/5 transition-all cursor-pointer"
+              >
+                Reset Thread
+              </button>
+            </div>
+
+            {/* Message Thread Hub */}
+            <div className="bg-slate-950/70 rounded-xl p-4 border border-white/5 h-[300px] overflow-y-auto scrollbar-custom space-y-3 flex flex-col mb-4">
+              {aiChatMessages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex flex-col max-w-[85%] ${
+                    msg.role === "user" ? "self-end items-end" : "self-start items-start"
+                  }`}
+                >
+                  <span className="text-[8px] font-mono text-slate-500 mb-0.5 px-1">{msg.time}</span>
+                  <div
+                    className={`p-3 rounded-2xl text-xs leading-relaxed text-left break-words ${
+                      msg.role === "user"
+                        ? "bg-purple-600 text-white rounded-tr-none"
+                        : "bg-slate-900 border border-white/10 text-slate-200 rounded-tl-none font-mono"
+                    }`}
+                    style={{ whiteSpace: "pre-wrap" }}
+                  >
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              
+              {aiChatLoading && (
+                <div className="self-start flex flex-col items-start max-w-[80%]">
+                  <span className="text-[8px] font-mono text-slate-500 mb-0.5 px-1">Co-Pilot Thinking...</span>
+                  <div className="bg-slate-900 border border-white/10 text-slate-400 p-3.5 rounded-2xl rounded-tl-none text-xs flex gap-1.5 items-center">
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Preset Prompt Shortcuts */}
+            <div className="flex flex-wrap gap-1.5 mb-3.5">
+              <button
+                type="button"
+                onClick={() => handleSendAiMessage("Can you summarize our current system liquidity and give a quick health report of the whole app?")}
+                disabled={aiChatLoading}
+                className="text-[10px] font-mono text-left px-3 py-1.5 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 hover:border-purple-500/20 text-indigo-300 transition-all cursor-pointer"
+              >
+                📊 Liquidity Summary
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendAiMessage("Look at all our pending deposits. Do any user receipts show mismatch issues or need immediate attention?")}
+                disabled={aiChatLoading}
+                className="text-[10px] font-mono text-left px-3 py-1.5 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 hover:border-purple-500/20 text-indigo-300 transition-all cursor-pointer"
+              >
+                🔍 Audit Receipts
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendAiMessage("Write an amazing general bulletin recommendation to announce successful livestock growth on chicken / pig portfolios.")}
+                disabled={aiChatLoading}
+                className="text-[10px] font-mono text-left px-3 py-1.5 rounded-lg border border-white/5 bg-white/5 hover:bg-white/10 hover:border-purple-500/20 text-indigo-300 transition-all cursor-pointer"
+              >
+                📢 Bulletin Notice
+              </button>
+            </div>
+
+            {/* Input box */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendAiMessage();
+              }}
+              className="flex gap-2"
+            >
+              <input
+                type="text"
+                value={aiChatInput}
+                onChange={(e) => setAiChatInput(e.target.value)}
+                disabled={aiChatLoading}
+                placeholder="Instruct your personal co-pilot..."
+                className="flex-1 bg-slate-950/80 hover:bg-slate-950 border border-white/10 focus:border-purple-500 focus:outline-none rounded-xl px-4 py-2.5 text-xs text-white font-mono placeholder:text-slate-500 disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={aiChatLoading || !aiChatInput.trim()}
+                className="px-4 rounded-xl bg-purple-600 hover:bg-purple-500 active:bg-purple-700 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider font-mono transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                Send ⚡
+              </button>
+            </form>
+          </div>
+
+          {/* AI Knowledge Vault & Dynamic Learning Engine Sidebar */}
+          <div className="lg:col-span-1 flex flex-col justify-between bg-slate-950/45 p-4 rounded-xl border border-white/5 text-left">
+            <div>
+              <div className="flex items-center gap-2 mb-3 pb-2 border-b border-white/5">
+                <div className="w-6 h-6 rounded bg-indigo-500/10 flex items-center justify-center text-indigo-400">
+                  <Award className="w-4 h-4" />
+                </div>
+                <h4 className="text-[11px] font-mono font-bold tracking-wide text-white uppercase">AI Knowledge Vault</h4>
+              </div>
+
+              {/* Dynamic Learnings Logs */}
+              <div className="space-y-2.5 h-[240px] overflow-y-auto scrollbar-custom pr-1">
+                {learnings.length === 0 ? (
+                  <div className="text-[10px] font-mono text-slate-500 text-center py-12">
+                    Learning database is empty. Process approvals to build AI memory logs automatically.
+                  </div>
+                ) : (
+                  [...learnings].reverse().map((learn) => (
+                    <div 
+                      key={learn.id} 
+                      className="p-2 rounded bg-slate-900/60 border border-white/5 text-left hover:border-purple-500/20 transition-all font-mono text-[9px] text-slate-300 leading-normal"
+                    >
+                      <div className="flex justify-between items-center mb-1 text-slate-500 text-[8px]">
+                        <span className="font-bold text-indigo-400 tracking-wider">
+                          {learn.category === "automated_learning" ? "🤖 ACTION MEMO" : "🎓 TAUGHT RULE"}
+                        </span>
+                        <span>{new Date(learn.timestamp || Date.now()).toLocaleTimeString()}</span>
+                      </div>
+                      <p className="break-words">{learn.memory}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Direct Teach Form */}
+            <form onSubmit={handleTeach} className="mt-4 pt-3 border-t border-white/5">
+              <label htmlFor="learning_instruction_input" className="block text-[8px] font-mono text-indigo-300 uppercase tracking-widest font-bold mb-1.5 text-left">
+                Directly Teach Companion Rule
+              </label>
+              <div className="flex gap-1.5">
+                <input
+                  id="learning_instruction_input"
+                  type="text"
+                  value={teachInput}
+                  onChange={(e) => setTeachInput(e.target.value)}
+                  disabled={isTeaching}
+                  placeholder="Teach custom rule... (e.g. Reject wire slips lacking correct NGN tokens)"
+                  className="flex-1 bg-slate-950 px-3 py-2 rounded border border-white/10 text-[10px] font-mono text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                />
+                <button
+                  type="submit"
+                  disabled={isTeaching || !teachInput.trim()}
+                  className="px-3 rounded bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 text-[10px] text-white font-bold transition-all cursor-pointer flex items-center justify-center font-mono uppercase"
+                >
+                  Teach
+                </button>
+              </div>
+            </form>
+          </div>
+
+        </div>
+      </div>
 
       {/* 4. API Transaction Stream Feed Logs */}
       <div className="glass-panel p-5 rounded-2xl border-white/10 bg-slate-900/10">

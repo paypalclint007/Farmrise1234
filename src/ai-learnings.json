@@ -1,0 +1,16 @@
+[
+  {
+    "id": "mem_1",
+    "timestamp": "2026-06-23T06:40:00.000Z",
+    "category": "referral_check",
+    "memory": "Enforce agricultural safety standard: Users must invite at least 2 distinct active referred investors before cash-out approvals.",
+    "decisionWeight": 0.95
+  },
+  {
+    "id": "mem_2",
+    "timestamp": "2026-06-23T06:41:00.000Z",
+    "category": "deposit_review",
+    "memory": "Double-check wire paper attachments with NGN currency parameters to prevent artificial receipt spoofing.",
+    "decisionWeight": 0.9
+  }
+]
