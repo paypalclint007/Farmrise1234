@@ -10,6 +10,7 @@ import { isMockAppwrite, testConnection, APPWRITE_CONFIG, verifyDepositsCollecti
 import { motion } from "motion/react";
 import { ActiveInvestment } from "../types";
 import { playNotificationChime, requestBrowserNotificationPermission } from "../utils/notifications";
+import { SecureUnlockSetupPrompt } from "./SecureUnlock";
 
 export default function UserPages() {
   const { currentPage, navigate } = useFarm();
@@ -2367,6 +2368,28 @@ function ProfileView() {
   const [appwriteFeedback, setAppwriteFeedback] = useState<string | null>(null);
 
   const [hasFallbackActive, setHasFallbackActive] = useState(false);
+  const [isSecureUnlockActive, setIsSecureUnlockActive] = useState(false);
+  const [secureUnlockType, setSecureUnlockType] = useState<string | null>(null);
+  const [setupModalOpen, setSetupModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsSecureUnlockActive(localStorage.getItem("fr_secure_unlock_enabled") === "true");
+      setSecureUnlockType(localStorage.getItem("fr_secure_unlock_type"));
+    }
+  }, []);
+
+  const handleDisableSecureUnlock = () => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("fr_secure_unlock_enabled", "false");
+      setIsSecureUnlockActive(false);
+      alert("Secure Unlock lock is disabled. Your workspace and session resume is no longer guarded by biometrics.");
+    }
+  };
+
+  const handleEnableSecureUnlock = () => {
+    setSetupModalOpen(true);
+  };
 
   const handleClearFallback = () => {
     if (typeof window !== "undefined") {
@@ -2513,6 +2536,50 @@ function ProfileView() {
         </div>
       </div>
 
+      {/* Dynamic Secure Unlock Panel */}
+      <div className="glass-panel p-6 rounded-3xl border border-purple-500/15 bg-gradient-to-br from-[#0c1930] to-[#040b17] space-y-5 shadow-xl">
+        <div className="flex items-start gap-3.5">
+          <div className="p-3 bg-purple-500/10 rounded-2xl text-xl animate-pulse text-purple-400">
+            🔒
+          </div>
+          <div className="flex-1 text-left">
+            <h4 className="text-sm font-bold text-white font-display">Secure Biometric Unlock Shield</h4>
+            <p className="text-[10px] text-slate-450 mt-1 leading-relaxed">
+              Enforce local fingerprint scanning or private numeric passcode before resuming your wallet context on app launch or session wakeup.
+            </p>
+          </div>
+        </div>
+
+        <div className="p-4 bg-slate-950/40 rounded-2xl border border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-left space-y-1">
+            <span className="text-[10px] font-mono text-purple-400 font-bold uppercase tracking-wider block">Shield Status Checks</span>
+            <p className="text-xs text-white font-medium">
+              {isSecureUnlockActive 
+                ? `Active & Guarded via device ${secureUnlockType === "biometric" ? "Fingerprint/Face identity" : "4-digit passcode"}`
+                : "Inactive (Wallet & layout resume unguarded)"}
+            </p>
+          </div>
+
+          <div>
+            {isSecureUnlockActive ? (
+              <button
+                onClick={handleDisableSecureUnlock}
+                className="py-2.5 px-4 rounded-xl border border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/25 hover:text-red-350 font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
+              >
+                Disable Guard
+              </button>
+            ) : (
+              <button
+                onClick={handleEnableSecureUnlock}
+                className="py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-md"
+              >
+                Enable Secure Shield
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Local Sandbox Fallback active warning for regular users */}
       {hasFallbackActive && (
         <div className="glass-panel p-5 rounded-2xl border border-amber-500/30 bg-amber-500/5 space-y-3">
@@ -2614,6 +2681,18 @@ function ProfileView() {
           <span>Log Out Account</span>
         </button>
       </div>
+
+      {setupModalOpen && (
+        <SecureUnlockSetupPrompt 
+          onDismiss={() => setSetupModalOpen(false)}
+          onSuccess={() => {
+            setIsSecureUnlockActive(true);
+            setSecureUnlockType(localStorage.getItem("fr_secure_unlock_type"));
+            setSetupModalOpen(false);
+          }}
+          currentUser={currentUser}
+        />
+      )}
     </div>
   );
 }

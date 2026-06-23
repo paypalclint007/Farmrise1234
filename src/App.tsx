@@ -6,9 +6,10 @@ import AdminPages from "./components/AdminPages";
 import FarmUpdatesPage from "./components/FarmUpdatesPage";
 import { 
   Compass, LayoutDashboard, Calendar, User, Bell, 
-  Sparkles, CheckCircle2, CircleDollarSign, LogOut, Lock
+  Sparkles, CheckCircle2, CircleDollarSign, LogOut, Lock, MessageCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { useSecureLockState, SecureUnlockSetupPrompt, SecureUnlockOverlay } from "./components/SecureUnlock";
 
 function MainAppShell() {
   const { 
@@ -18,6 +19,13 @@ function MainAppShell() {
     notifications, 
     markNotificationRead: markNotificationAsRead
   } = useFarm();
+
+  const {
+    isLocked,
+    unlockApp,
+    isSetupRecommended,
+    dismissSetupRecommendation
+  } = useSecureLockState();
 
   const [isSplashActive, setSplashActive] = useState(true);
   const [notifPanelOpen, setNotifPanelOpen] = useState(false);
@@ -524,6 +532,45 @@ function MainAppShell() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Secure Unlock Overlays */}
+      <AnimatePresence>
+        {isLocked && (
+          <SecureUnlockOverlay onUnlock={unlockApp} currentUser={currentUser} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isSetupRecommended && (
+          <SecureUnlockSetupPrompt 
+            onDismiss={dismissSetupRecommendation} 
+            onSuccess={dismissSetupRecommendation} 
+            currentUser={currentUser} 
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Floating WhatsApp Support & Community Link */}
+      <div className="fixed bottom-24 md:bottom-8 right-6 z-40">
+        <a
+          href="https://chat.whatsapp.com/FiM7oFJz36d26XQEE2GNLu"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2.5 px-4.5 py-3.5 bg-[#25D366] hover:bg-[#20ba56] text-white font-bold rounded-full shadow-[0_4px_24px_rgba(37,211,102,0.4)] hover:shadow-[0_4px_32px_rgba(37,211,102,0.65)] transition-all font-sans text-xs group active:scale-95 border border-white/10"
+          title="Join our WhatsApp Community"
+        >
+          <div className="relative">
+            <MessageCircle className="w-5.5 h-5.5 text-white fill-white/10" />
+            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+            </span>
+          </div>
+          <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 md:max-w-xs block whitespace-nowrap font-bold tracking-wide">
+            WhatsApp Group
+          </span>
+        </a>
+      </div>
     </div>
   );
 }
