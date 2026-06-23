@@ -17,7 +17,8 @@ function MainAppShell() {
     currentPage, 
     navigate, 
     notifications, 
-    markNotificationRead: markNotificationAsRead
+    markNotificationRead: markNotificationAsRead,
+    loading
   } = useFarm();
 
   const {
@@ -32,13 +33,22 @@ function MainAppShell() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
-  // Splash Screen timer
+  // Splash Screen dynamic fast timer
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setSplashActive(false);
-    }, 2400);
-    return () => clearTimeout(timer);
-  }, [setSplashActive]);
+    if (!loading) {
+      // Transition immediately once database resources are fully loaded and prepared
+      const timer = setTimeout(() => {
+        setSplashActive(false);
+      }, 350);
+      return () => clearTimeout(timer);
+    } else {
+      // Safety threshold of maximum 1.5 seconds if waiting for network/database handshake
+      const timer = setTimeout(() => {
+        setSplashActive(false);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, setSplashActive]);
 
   // Track the Progressive Web App installation prompt
   useEffect(() => {

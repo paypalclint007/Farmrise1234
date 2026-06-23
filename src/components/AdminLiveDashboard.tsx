@@ -42,17 +42,100 @@ interface LogEntry {
   message: string;
 }
 
+// Clean and case-insensitive deduplicate of user database entries by email to ensure accurate sponsors count
+const computeStatsFromData = (
+  fetchedUsersDocs: any[],
+  fetchedDepositsDocs: any[],
+  fetchedInvestmentsDocs: any[],
+  fetchedWithdrawalsDocs: any[]
+): LiveStats => {
+  const uniqueUsersMap = new Map<string, any>();
+  fetchedUsersDocs.forEach(u => {
+    if (u && u.email) {
+      const emailKey = u.email.toLowerCase().trim();
+      if (emailKey !== "") {
+        const existing = uniqueUsersMap.get(emailKey);
+        if (!existing || (u.isAdmin && !existing.isAdmin)) {
+          uniqueUsersMap.set(emailKey, u);
+        }
+      }
+    }
+  });
+  const dedupedUsers = Array.from(uniqueUsersMap.values());
+
+  // Live aggregations
+  const activeUsers = dedupedUsers.filter(u => !u.isBanned).length;
+  const bannedUsers = dedupedUsers.filter(u => u.isBanned).length;
+  const totalWallets = dedupedUsers.reduce((sum, u) => sum + (parseFloat(u.balance || u.walletBalance) || 0), 0);
+
+  const approvedDeps = fetchedDepositsDocs.filter(d => d.status === "approved");
+  const pendingDeps = fetchedDepositsDocs.filter(d => d.status === "pending");
+  const rejectedDeps = fetchedDepositsDocs.filter(d => d.status === "rejected");
+  
+  const totalDeposited = approvedDeps.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+  const pendingDeposited = pendingDeps.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+
+  const activeInvestments = fetchedInvestmentsDocs.filter(i => i.status === "active");
+  const maturedInvestments = fetchedInvestmentsDocs.filter(i => i.status === "matured");
+  const totalInvested = activeInvestments.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
+
+  const approvedWths = fetchedWithdrawalsDocs.filter(w => w.status === "approved");
+  const pendingWths = fetchedWithdrawalsDocs.filter(w => w.status === "pending");
+  const rejectedWths = fetchedWithdrawalsDocs.filter(w => w.status === "rejected");
+
+  const totalWithdrawn = approvedWths.reduce((sum, w) => sum + (parseFloat(w.amount) || 0), 0);
+  const pendingWithdrawn = pendingWths.reduce((sum, w) => sum + (parseFloat(w.amount) || 0), 0);
+
+  return {
+    usersCount: dedupedUsers.length,
+    activeUsersCount: activeUsers,
+    bannedUsersCount: bannedUsers,
+    totalUserWallets: totalWallets,
+
+    depositsCount: fetchedDepositsDocs.length,
+    approvedDepositsCount: approvedDeps.length,
+    pendingDepositsCount: pendingDeps.length,
+    rejectedDepositsCount: rejectedDeps.length,
+    totalDepositedSum: totalDeposited,
+    pendingDepositedSum: pendingDeposited,
+
+    investmentsCount: fetchedInvestmentsDocs.length,
+    activeInvestmentsCount: activeInvestments.length,
+    maturedInvestmentsCount: maturedInvestments.length,
+    totalInvestedSum: totalInvested,
+
+    withdrawalsCount: fetchedWithdrawalsDocs.length,
+    approvedWithdrawalsCount: approvedWths.length,
+    pendingWithdrawalsCount: pendingWths.length,
+    rejectedWithdrawalsCount: rejectedWths.length,
+    totalWithdrawnSum: totalWithdrawn,
+    pendingWithdrawnSum: pendingWithdrawn
+  };
+};
+
 export default function AdminLiveDashboard() {
   const { navigate, deposits = [], users = [], investments = [], withdrawals = [] } = useFarm();
   
-  // Real-time live state variables
-  const [stats, setStats] = useState<LiveStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Real-time live state variables instantly computed from local app context!
+  const initialStats = React.useMemo(() => {
+    return computeStatsFromData(users, deposits, investments, withdrawals);
+  }, [users, deposits, investments, withdrawals]);
+
+  const [stats, setStats] = useState<LiveStats | null>(initialStats);
+  const [loading, setLoading] = useState(users.length === 0 && deposits.length === 0);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(new Date());
   const [refreshIntervalSec, setRefreshIntervalSec] = useState<number>(5); // Default polling 5s
   const [isSyncing, setIsSyncing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+
+  // Automatically keep stats in sync whenever context collections update in real-time
+  useEffect(() => {
+    setStats(initialStats);
+    if (users.length > 0) {
+      setLoading(false);
+    }
+  }, [initialStats, users.length]);
 
   // AI Co-Pilot memory states
   const [learnings, setLearnings] = useState<any[]>([]);
@@ -195,134 +278,47 @@ export default function AdminLiveDashboard() {
           addLog("Offline store retrieval failed.", "error");
         }
       } else {
-        // Direct Query Firebase client
-        addLog(`Initiating listDocuments to Firebase Firestore`, "info");
+        // Direct Query Firebase client IN PARALLEL for ultra-performance (instant return!)
+        addLog(`Initiating concurrent fetch requests to Firebase Firestore`, "info");
 
-        // 1. Fetch Users
-        try {
-          const uRes = await databases.listDocuments(
-            APPWRITE_CONFIG.databaseId,
-            APPWRITE_CONFIG.collections.users,
-            [Query.limit(5000)]
-          );
-          fetchedUsersDocs = uRes.documents;
-          addLog(`Live Database: Fetched ${uRes.documents.length} users documents.`, "success");
-        } catch (uErr: any) {
-          addLog(`Users collection list failed: ${uErr.message || uErr}`, "error");
-          fetchedUsersDocs = JSON.parse(localStorage.getItem("fr_users") || "[]");
-        }
+        const [uRes, dRes, iRes, wRes] = await Promise.all([
+          databases.listDocuments(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.users, [Query.limit(5000)]).catch((err: any) => {
+            console.error("Users parallel fetch error:", err);
+            return { documents: JSON.parse(localStorage.getItem("fr_users") || "[]") };
+          }),
+          databases.listDocuments(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.deposits, [Query.limit(5000)]).catch((err: any) => {
+            console.error("Deposits parallel fetch error:", err);
+            return { documents: JSON.parse(localStorage.getItem("fr_deposits") || "[]") };
+          }),
+          databases.listDocuments(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.investments, [Query.limit(5000)]).catch((err: any) => {
+            console.error("Investments parallel fetch error:", err);
+            return { documents: JSON.parse(localStorage.getItem("fr_investments") || "[]") };
+          }),
+          databases.listDocuments(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.withdrawals, [Query.limit(5000)]).catch((err: any) => {
+            console.error("Withdrawals parallel fetch error:", err);
+            return { documents: JSON.parse(localStorage.getItem("fr_withdrawals") || "[]") };
+          })
+        ]);
 
-        // 2. Fetch Deposits
-        try {
-          const dRes = await databases.listDocuments(
-            APPWRITE_CONFIG.databaseId,
-            APPWRITE_CONFIG.collections.deposits,
-            [Query.limit(5000)]
-          );
-          fetchedDepositsDocs = dRes.documents;
-          addLog(`Live Database: Fetched ${dRes.documents.length} deposits documents.`, "success");
-        } catch (dErr: any) {
-          addLog(`Deposits collection list failed: ${dErr.message || dErr}`, "error");
-          fetchedDepositsDocs = JSON.parse(localStorage.getItem("fr_deposits") || "[]");
-        }
-
-        // 3. Fetch Investments
-        try {
-          const iRes = await databases.listDocuments(
-            APPWRITE_CONFIG.databaseId,
-            APPWRITE_CONFIG.collections.investments,
-            [Query.limit(5000)]
-          );
-          fetchedInvestmentsDocs = iRes.documents;
-          addLog(`Live Database: Fetched ${iRes.documents.length} investments documents.`, "success");
-        } catch (iErr: any) {
-          addLog(`Investments collection list failed: ${iErr.message || iErr}`, "error");
-          fetchedInvestmentsDocs = JSON.parse(localStorage.getItem("fr_investments") || "[]");
-        }
-
-        // 4. Fetch Withdrawals
-        try {
-          const wRes = await databases.listDocuments(
-            APPWRITE_CONFIG.databaseId,
-            APPWRITE_CONFIG.collections.withdrawals,
-            [Query.limit(5000)]
-          );
-          fetchedWithdrawalsDocs = wRes.documents;
-          addLog(`Live Database: Fetched ${wRes.documents.length} withdrawals documents.`, "success");
-        } catch (wErr: any) {
-          addLog(`Withdrawals collection list failed: ${wErr.message || wErr}`, "error");
-          fetchedWithdrawalsDocs = JSON.parse(localStorage.getItem("fr_withdrawals") || "[]");
-        }
+        fetchedUsersDocs = uRes?.documents || [];
+        fetchedDepositsDocs = dRes?.documents || [];
+        fetchedInvestmentsDocs = iRes?.documents || [];
+        fetchedWithdrawalsDocs = wRes?.documents || [];
+        
+        addLog(`Live Database Parallel Sync: Fetched ${fetchedUsersDocs.length} users, ${fetchedDepositsDocs.length} deposits, ${fetchedInvestmentsDocs.length} investments, ${fetchedWithdrawalsDocs.length} withdrawals.`, "success");
       }
 
-      // Clean and case-insensitive deduplicate of user database entries by email to ensure accurate sponsors count
-      const uniqueUsersMap = new Map<string, any>();
-      fetchedUsersDocs.forEach(u => {
-        if (u && u.email) {
-          const emailKey = u.email.toLowerCase().trim();
-          if (emailKey !== "") {
-            const existing = uniqueUsersMap.get(emailKey);
-            if (!existing || (u.isAdmin && !existing.isAdmin)) {
-              uniqueUsersMap.set(emailKey, u);
-            }
-          }
-        }
-      });
-      fetchedUsersDocs = Array.from(uniqueUsersMap.values());
-
-      // Live aggregations
-      const activeUsers = fetchedUsersDocs.filter(u => !u.isBanned).length;
-      const bannedUsers = fetchedUsersDocs.filter(u => u.isBanned).length;
-      const totalWallets = fetchedUsersDocs.reduce((sum, u) => sum + (parseFloat(u.balance || u.walletBalance) || 0), 0);
-
-      const approvedDeps = fetchedDepositsDocs.filter(d => d.status === "approved");
-      const pendingDeps = fetchedDepositsDocs.filter(d => d.status === "pending");
-      const rejectedDeps = fetchedDepositsDocs.filter(d => d.status === "rejected");
-      
-      const totalDeposited = approvedDeps.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
-      const pendingDeposited = pendingDeps.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
-
-      const activeInvestments = fetchedInvestmentsDocs.filter(i => i.status === "active");
-      const maturedInvestments = fetchedInvestmentsDocs.filter(i => i.status === "matured");
-      const totalInvested = activeInvestments.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0);
-
-      const approvedWths = fetchedWithdrawalsDocs.filter(w => w.status === "approved");
-      const pendingWths = fetchedWithdrawalsDocs.filter(w => w.status === "pending");
-      const rejectedWths = fetchedWithdrawalsDocs.filter(w => w.status === "rejected");
-
-      const totalWithdrawn = approvedWths.reduce((sum, w) => sum + (parseFloat(w.amount) || 0), 0);
-      const pendingWithdrawn = pendingWths.reduce((sum, w) => sum + (parseFloat(w.amount) || 0), 0);
-
-      const calculatedStats: LiveStats = {
-        usersCount: fetchedUsersDocs.length,
-        activeUsersCount: activeUsers,
-        bannedUsersCount: bannedUsers,
-        totalUserWallets: totalWallets,
-
-        depositsCount: fetchedDepositsDocs.length,
-        approvedDepositsCount: approvedDeps.length,
-        pendingDepositsCount: pendingDeps.length,
-        rejectedDepositsCount: rejectedDeps.length,
-        totalDepositedSum: totalDeposited,
-        pendingDepositedSum: pendingDeposited,
-
-        investmentsCount: fetchedInvestmentsDocs.length,
-        activeInvestmentsCount: activeInvestments.length,
-        maturedInvestmentsCount: maturedInvestments.length,
-        totalInvestedSum: totalInvested,
-
-        withdrawalsCount: fetchedWithdrawalsDocs.length,
-        approvedWithdrawalsCount: approvedWths.length,
-        pendingWithdrawalsCount: pendingWths.length,
-        rejectedWithdrawalsCount: rejectedWths.length,
-        totalWithdrawnSum: totalWithdrawn,
-        pendingWithdrawnSum: pendingWithdrawn
-      };
+      // Reuse our common stats mapper for consistent performance
+      const calculatedStats = computeStatsFromData(
+        fetchedUsersDocs, 
+        fetchedDepositsDocs, 
+        fetchedInvestmentsDocs, 
+        fetchedWithdrawalsDocs
+      );
 
       setStats(calculatedStats);
       setError(null);
       setLastUpdated(new Date());
-      addLog("Live dashboard statistics aggregates updated successfully.", "success");
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Failed to parse live Firebase/Firestore datasets");
@@ -455,7 +451,7 @@ export default function AdminLiveDashboard() {
       )}
 
       {/* 2. Core Stats Bento-Grid */}
-      {loading ? (
+      {loading && !stats ? (
         <div className="glass-panel p-20 rounded-2xl flex flex-col items-center justify-center gap-3">
           <RefreshCw className="w-10 h-10 text-blue-400 animate-spin" />
           <p className="text-sm font-mono text-slate-400">Performing instant API aggregation sequence...</p>

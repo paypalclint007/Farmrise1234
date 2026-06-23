@@ -707,6 +707,16 @@ export const simulatedDatabases = {
 
       await setDoc(docRef, fullDoc);
       console.log(`[Firebase Firestore] Document successfully created in "${canonicalCollId}" with ID "${targetId}"`);
+      
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("simulated_realtime_write", {
+          detail: {
+            channel: `databases.default.collections.${collId}.documents.create`,
+            payload: fullDoc
+          }
+        }));
+      }
+
       return fullDoc;
     } catch (err: any) {
       console.error(`[Firebase Firestore Create Error in "${canonicalCollId}"]:`, err);
@@ -734,11 +744,22 @@ export const simulatedDatabases = {
       console.log(`[Firebase Firestore] Document "${docId}" inside "${canonicalCollId}" updated successfully.`);
 
       const snap = await getDoc(docRef);
-      return {
+      const updatedDoc = {
         $id: docId,
         id: docId,
         ...snap.data()
       };
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("simulated_realtime_write", {
+          detail: {
+            channel: `databases.default.collections.${collId}.documents.update`,
+            payload: updatedDoc
+          }
+        }));
+      }
+
+      return updatedDoc;
     } catch (err: any) {
       console.error(`[Firebase Firestore Update Error in "${canonicalCollId}" ID "${docId}"]:`, err);
       if (err.message?.includes("Missing or insufficient permissions") || err.code === "permission-denied") {
@@ -777,6 +798,16 @@ export const simulatedDatabases = {
       const docRef = doc(db, canonicalCollId, docId);
       await deleteDoc(docRef);
       console.log(`[Firebase Firestore] Document "${docId}" inside "${canonicalCollId}" successfully deleted.`);
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("simulated_realtime_write", {
+          detail: {
+            channel: `databases.default.collections.${collId}.documents.delete`,
+            payload: { id: docId, $id: docId }
+          }
+        }));
+      }
+
       return { success: true };
     } catch (err: any) {
       console.error(`[Firebase Firestore Delete Error in "${canonicalCollId}" ID "${docId}"]:`, err);

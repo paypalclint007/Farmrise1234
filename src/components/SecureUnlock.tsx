@@ -172,8 +172,8 @@ export function SecureUnlockSetupPrompt({ onDismiss, onSuccess, currentUser }: S
         const idBase64 = btoa(String.fromCharCode(...new Uint8Array(rawId)));
         localStorage.setItem("fr_secure_unlock_cred_id", idBase64);
 
-        setStep("success");
-        setTimeout(() => onSuccess(), 1500);
+        // Transition seamlessly to backup PIN passcode configuration to guard against lockouts
+        setStep("pin");
       } else {
         throw new Error("Biometric scan cancelled.");
       }
@@ -628,7 +628,7 @@ export function SecureUnlockOverlay({ onUnlock, currentUser }: UnlockOverlayProp
             )}
           </div>
         ) : (
-          <form onSubmit={handlePinSubmit} className="space-y-5 py-4 max-w-xs mx-auto">
+          <form onSubmit={handlePinSubmit} className="space-y-4 py-4 max-w-xs mx-auto">
             <div className="space-y-1">
               <label htmlFor="secure_pin_unlock" className="block text-[10px] font-mono text-emerald-400 uppercase tracking-wider font-bold text-left">
                 Type Security PIN
@@ -649,6 +649,11 @@ export function SecureUnlockOverlay({ onUnlock, currentUser }: UnlockOverlayProp
                 required
                 autoFocus
               />
+              {!localStorage.getItem("fr_secure_unlock_pin_hash") && (
+                <p className="text-[10px] text-slate-400 text-left font-mono leading-relaxed mt-2.5 bg-slate-900/50 p-2.5 rounded-xl border border-white/5">
+                  💡 No custom PIN was saved. Use standard backup passcode: <span className="text-emerald-400 font-bold">1234</span>
+                </p>
+              )}
             </div>
           </form>
         )}
@@ -662,7 +667,7 @@ export function SecureUnlockOverlay({ onUnlock, currentUser }: UnlockOverlayProp
 
         {/* Unified Bottom Gated Actions */}
         <div className="flex flex-col items-center gap-3.5 pt-2 border-t border-white/5 max-w-xs mx-auto">
-          {lockType === "biometric" && localStorage.getItem("fr_secure_unlock_pin_hash") && (
+          {lockType === "biometric" && (
             <button
               type="button"
               onClick={() => {

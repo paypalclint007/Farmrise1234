@@ -119,6 +119,45 @@ export let isMockAppwrite = false;
 export const client = new Client();
 export const realtimeClient = new Client();
 
+// Intercept subscribe to prevent real Appwrite websocket connection attempts when running with our simulation engine
+realtimeClient.subscribe = function(this: any, channels: string[], callback: (response: any) => void) {
+  console.log("[Appwrite Realtime Client] Simulating realtime subscription via local EventBus for channels:", channels);
+  
+  const handleSimulatedEvent = (event: Event) => {
+    const customEvent = event as CustomEvent;
+    const { channel, payload } = customEvent.detail || {};
+    
+    // Match the modified channel with our subscription list
+    const isMatching = channels.some(subscribedChannel => {
+      // Allow exact match or partial matches like of database sub-paths
+      return subscribedChannel === channel || 
+             channel?.startsWith(subscribedChannel) || 
+             subscribedChannel.startsWith(channel);
+    });
+
+    if (isMatching) {
+      console.log(`[Appwrite Realtime Client] Match found: triggering client callback for channel "${channel}"`);
+      callback({
+        events: ["databases.default.collections.*"],
+        channels: channels,
+        timestamp: new Date().toISOString(),
+        payload: payload || {}
+      });
+    }
+  };
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("simulated_realtime_write", handleSimulatedEvent);
+  }
+
+  return () => {
+    console.log("[Appwrite Realtime Client] Closing simulated realtime subscription for channels:", channels);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("simulated_realtime_write", handleSimulatedEvent);
+    }
+  };
+} as any;
+
 export function formatAppwriteEndpoint(raw: string): string {
   if (!raw) return "https://cloud.appwrite.io/v1";
   let url = cleanQuoteString(raw);
