@@ -105,87 +105,14 @@ interface SetupPromptProps {
 }
 
 export function SecureUnlockSetupPrompt({ onDismiss, onSuccess, currentUser }: SetupPromptProps) {
-  const [step, setStep] = useState<"choice" | "pin" | "biometric" | "success">("choice");
-  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState<"pin" | "success">("pin");
   const [pinInput, setPinInput] = useState("");
   const [errorText, setErrorText] = useState("");
-  const [isIframeOrRestricted, setIsIframeOrRestricted] = useState(false);
-
-  useEffect(() => {
-    // Detect if running inside a restricted iframe where WebAuthn calls will throw Security Errors
-    if (window.self !== window.top) {
-      setIsIframeOrRestricted(true);
-    }
-  }, []);
 
   const handleDecline = () => {
     localStorage.setItem("fr_secure_unlock_decision", "declined");
     localStorage.setItem("fr_secure_unlock_enabled", "false");
     onDismiss();
-  };
-
-  // Enrolling Fingerprint Biometric
-  const handleEnrollBiometric = async () => {
-    setLoading(true);
-    setErrorText("");
-
-    try {
-      const webAuthnReady = await isWebAuthnSupported();
-      if (!webAuthnReady || isIframeOrRestricted) {
-        throw new Error("WebAuthn API is blocked in this sandboxed window view.");
-      }
-
-      const challenge = new Uint8Array(32);
-      window.crypto.getRandomValues(challenge);
-
-      // WebAuthn Public Key registration options
-      const credentialCreationOptions: CredentialCreationOptions = {
-        publicKey: {
-          challenge: challenge,
-          rp: { name: "FarmRise Secure Portal" },
-          user: {
-            id: Uint8Array.from((currentUser?.id || "fr-user-99"), c => c.charCodeAt(0)),
-            name: currentUser?.email || "coop-sponsor@farmrise.co",
-            displayName: currentUser?.name || "Active Farm Sponsor"
-          },
-          pubKeyCredParams: [
-            { alg: -7, type: "public-key" }, // ES256
-            { alg: -257, type: "public-key" } // RS256
-          ],
-          authenticatorSelection: {
-            authenticatorAttachment: "platform", // Request platform sensor (fingerprint/face id)
-            userVerification: "required"
-          },
-          timeout: 8000
-        }
-      };
-
-      const credential = await navigator.credentials.create(credentialCreationOptions) as PublicKeyCredential | null;
-      if (credential) {
-        // Biometric successfully matched and stored into Keychain
-        localStorage.setItem("fr_secure_unlock_enabled", "true");
-        localStorage.setItem("fr_secure_unlock_decision", "accepted");
-        localStorage.setItem("fr_secure_unlock_type", "biometric");
-        
-        // Save the raw base64 Credential ID so we can query it specifically later 
-        const rawId = credential.rawId;
-        const idBase64 = btoa(String.fromCharCode(...new Uint8Array(rawId)));
-        localStorage.setItem("fr_secure_unlock_cred_id", idBase64);
-
-        // Transition seamlessly to backup PIN passcode configuration to guard against lockouts
-        setStep("pin");
-      } else {
-        throw new Error("Biometric scan cancelled.");
-      }
-    } catch (err: any) {
-      console.warn("Native WebAuthn Enrollment failed/restricted in this client. Activating premium simulation:", err.message || err);
-      
-      // Fallback seamlessly to biometric simulation with fallback PIN requirement
-      localStorage.setItem("fr_secure_unlock_biometric_simulated", "true");
-      setStep("pin"); // Must configure backup PIN to complete biometric simulator securely
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleSavePin = (e: React.FormEvent) => {
@@ -197,16 +124,7 @@ export function SecureUnlockSetupPrompt({ onDismiss, onSuccess, currentUser }: S
     
     localStorage.setItem("fr_secure_unlock_enabled", "true");
     localStorage.setItem("fr_secure_unlock_decision", "accepted");
-    
-    // If they came here from the failed WebAuthn biometric enroll, we set type to biometric 
-    // to utilize the offline high-fidelity biometric simulator with PIN fallback.
-    const isSimulatedBio = localStorage.getItem("fr_secure_unlock_biometric_simulated") === "true";
-    if (isSimulatedBio) {
-      localStorage.setItem("fr_secure_unlock_type", "biometric");
-    } else {
-      localStorage.setItem("fr_secure_unlock_type", "pin");
-    }
-    
+    localStorage.setItem("fr_secure_unlock_type", "pin");
     localStorage.setItem("fr_secure_unlock_pin_hash", pinInput);
     
     setStep("success");
@@ -237,81 +155,15 @@ export function SecureUnlockSetupPrompt({ onDismiss, onSuccess, currentUser }: S
           </button>
         </div>
 
-        {step === "choice" && (
-          <div className="space-y-5">
-            <div className="space-y-1.5 text-center sm:text-left">
-              <h3 className="text-base font-bold text-white font-display tracking-tight">
-                Guard Your Sponsorship Wallet?
-              </h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Add protective session gating to FarmRise. Enabling secure unlock verifies your identity using your device's fingerprint or password whenever you resume the application.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 pt-1">
-              {/* Option 1: Biometric Fingerprint */}
-              <button
-                type="button"
-                onClick={handleEnrollBiometric}
-                className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 to-indigo-950/40 border border-white/10 hover:border-purple-500/40 transition-all text-left flex items-center gap-4 cursor-pointer group hover:scale-[1.01]"
-              >
-                <div className="p-3 bg-purple-500/10 text-purple-400 rounded-xl group-hover:bg-purple-500/20 shrink-0">
-                  <Fingerprint className="w-6 h-6 animate-pulse" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-white">Biometric Fingerprint Lock</h4>
-                  <p className="text-[10px] text-slate-450 mt-0.5">Recommended. Express scanner unlock with Android/iOS hardware.</p>
-                </div>
-              </button>
-
-              {/* Option 2: 4-Digit Security PIN */}
-              <button
-                type="button"
-                onClick={() => setStep("pin")}
-                className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 to-emerald-950/40 border border-white/10 hover:border-emerald-500/40 transition-all text-left flex items-center gap-4 cursor-pointer group hover:scale-[1.01]"
-              >
-                <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl group-hover:bg-emerald-500/20 shrink-0">
-                  <KeyRound className="w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-white">4-Digit Security PIN code</h4>
-                  <p className="text-[10px] text-slate-450 mt-0.5">Universal fallback. Protect with a secret digital passcode lock.</p>
-                </div>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handleDecline}
-                className="py-3 px-4 rounded-xl border border-white/5 hover:bg-white/5 text-slate-400 hover:text-white transition-all text-xs font-semibold cursor-pointer text-center"
-              >
-                No, Dismiss
-              </button>
-              <button
-                type="button"
-                onClick={handleDecline}
-                className="py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 transition-all text-xs font-semibold cursor-pointer text-center border border-white/5"
-              >
-                Remind Me Later
-              </button>
-            </div>
-          </div>
-        )}
-
         {step === "pin" && (
           <form onSubmit={handleSavePin} className="space-y-4">
             <div className="space-y-1.5 text-center sm:text-left">
               <h3 className="text-sm font-bold text-white font-display flex items-center gap-2">
                 <KeyRound className="w-4 h-4 text-emerald-400" /> 
-                {localStorage.getItem("fr_secure_unlock_biometric_simulated") === "true" 
-                  ? "Configuring Fingerprint Fallback PIN" 
-                  : "Set Up Security PIN"}
+                Set Up Security PIN
               </h3>
               <p className="text-[11px] text-slate-400">
-                {localStorage.getItem("fr_secure_unlock_biometric_simulated") === "true"
-                  ? "Since standard browser WebAuthn is restricted inside this preview frame, we configured our Integrated Fingerprint Simulator. Define a 4-Digit backup PIN to complete secure setup."
-                  : "Create a secret 4-digit code to securely lock and unlock FarmRise."}
+                Create a secret 4-digit code to securely lock and unlock FarmRise.
               </p>
             </div>
 
@@ -342,16 +194,16 @@ export function SecureUnlockSetupPrompt({ onDismiss, onSuccess, currentUser }: S
             <div className="flex justify-between items-center pt-2">
               <button
                 type="button"
-                onClick={() => setStep("choice")}
+                onClick={handleDecline}
                 className="text-xs text-slate-450 hover:text-white cursor-pointer"
               >
-                Back to choices
+                Cancel Setup
               </button>
               <button
                 type="submit"
-                className="py-2.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold font-mono uppercase tracking-wider transition-all cursor-pointer"
+                className="py-2.5 px-5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-all cursor-pointer active:scale-95"
               >
-                Save PIN Code
+                Secure Wallet
               </button>
             </div>
           </form>
@@ -383,126 +235,8 @@ interface UnlockOverlayProps {
 
 export function SecureUnlockOverlay({ onUnlock, currentUser }: UnlockOverlayProps) {
   const [unlockError, setUnlockError] = useState("");
-  const [pinModeActive, setPinModeActive] = useState(false);
   const [pinInput, setPinInput] = useState("");
   
-  // Interactive Simulator States
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanProgress, setScanProgress] = useState(0);
-  const [scanComplete, setScanComplete] = useState(false);
-  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const lockType = localStorage.getItem("fr_secure_unlock_type") || "pin";
-  const isSimulated = localStorage.getItem("fr_secure_unlock_biometric_simulated") === "true";
-  const hasCredId = localStorage.getItem("fr_secure_unlock_cred_id") !== null;
-
-  const triggerBiometricScan = async () => {
-    setUnlockError("");
-
-    // If it's the premium touch fingerprint simulator, we trigger the touch & hold gesture UI alert
-    if (isSimulated || !hasCredId) {
-      setUnlockError("Press and HOLD your visual fingerprint on the screen below to complete scan!");
-      return;
-    }
-
-    try {
-      const challenge = new Uint8Array(32);
-      window.crypto.getRandomValues(challenge);
-
-      const idBase64 = localStorage.getItem("fr_secure_unlock_cred_id");
-      const allowCredentials: PublicKeyCredentialDescriptor[] = [];
-      if (idBase64) {
-        const rawId = Uint8Array.from(atob(idBase64), c => c.charCodeAt(0));
-        allowCredentials.push({
-          type: "public-key",
-          id: rawId
-        });
-      }
-
-      const credentialRequestOptions: CredentialRequestOptions = {
-        publicKey: {
-          challenge: challenge,
-          timeout: 8000,
-          userVerification: "required",
-          allowCredentials: allowCredentials
-        }
-      };
-
-      if (!navigator.credentials || !navigator.credentials.get) {
-        throw new Error("Credentials API is blocked/unavailable.");
-      }
-
-      // Query standard device biometric credential
-      const credential = await navigator.credentials.get(credentialRequestOptions);
-      if (credential) {
-        onUnlock();
-      } else {
-        throw new Error("Credential check failed.");
-      }
-    } catch (err: any) {
-      console.warn("Native fingerprint query got rejected inside preview context:", err.message || err);
-      // Seamlessly instruct user to tap and hold the screen sensor or complete fallback
-      setUnlockError("Native WebAuthn scan rejected. Tap and HOLD the fingerprint sensor to trigger express lock-bypass scanner!");
-    }
-  };
-
-  // Interactive UI Fingerprint Scanner (Press and Hold gesture simulator)
-  // Perfectly handles mobile browsers where native Chrome credential API acts buggy.
-  const handleScanStart = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    setUnlockError("");
-    setScanComplete(false);
-    setIsScanning(true);
-    setScanProgress(0);
-
-    // Provide haptic feedback if supported by device
-    if (navigator.vibrate) {
-      navigator.vibrate([40]);
-    }
-
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-
-    scanIntervalRef.current = setInterval(() => {
-      setScanProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(scanIntervalRef.current!);
-          setScanComplete(true);
-          setIsScanning(false);
-          // High-fidelity success feedback
-          if (navigator.vibrate) {
-            navigator.vibrate([100]);
-          }
-          setTimeout(() => {
-            onUnlock();
-          }, 350);
-          return 100;
-        }
-        
-        if (navigator.vibrate && Math.random() > 0.6) {
-          navigator.vibrate(15);
-        }
-        return prev + 8;
-      });
-    }, 80);
-  };
-
-  const handleScanCancel = () => {
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    if (!scanComplete) {
-      setIsScanning(false);
-      setScanProgress(0);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-    };
-  }, []);
-
   const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const savedPin = localStorage.getItem("fr_secure_unlock_pin_hash") || "1234";
@@ -539,124 +273,40 @@ export function SecureUnlockOverlay({ onUnlock, currentUser }: UnlockOverlayProp
               Portal Guard Active <Lock className="w-4 h-4 text-[#2ECC71]" />
             </h2>
             <p className="text-xs text-slate-400">
-              Verify security parameters to resume co-funding layers.
+              Verify security PIN to resume co-funding layers.
             </p>
           </div>
         </div>
 
         {/* Content Screens */}
-        {!pinModeActive ? (
-          <div className="space-y-6 py-4">
-            {/* Interactive Scanner Core */}
-            <div className="relative w-32 h-32 mx-auto flex items-center justify-center">
-              
-              {/* Outer Circular Progress */}
-              <svg className="absolute w-full h-full transform -rotate-90">
-                <circle
-                  cx="64"
-                  cy="64"
-                  r="58"
-                  stroke="rgba(255,255,255,0.03)"
-                  strokeWidth="4"
-                  fill="transparent"
-                />
-                <circle
-                  cx="64"
-                  cy="64"
-                  r="58"
-                  stroke={scanComplete ? "#2ECC71" : "#8e44ad"}
-                  strokeWidth="4"
-                  fill="transparent"
-                  strokeDasharray={2 * Math.PI * 58}
-                  strokeDashoffset={2 * Math.PI * 58 * (1 - scanProgress / 100)}
-                  className="transition-all duration-75"
-                />
-              </svg>
-
-              {/* Central Sensor Area */}
-              <button
-                type="button"
-                onMouseDown={handleScanStart}
-                onMouseUp={handleScanCancel}
-                onMouseLeave={handleScanCancel}
-                onTouchStart={handleScanStart}
-                onTouchEnd={handleScanCancel}
-                className={`w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 relative focus:outline-none shrink-0 cursor-pointer ${
-                  scanComplete 
-                    ? "bg-emerald-500/10 border border-emerald-500/40 text-emerald-400"
-                    : isScanning
-                    ? "bg-purple-500/10 border border-purple-500/50 text-purple-300 scale-95 shadow-[0_0_25px_rgba(155,89,182,0.3)]"
-                    : "bg-slate-900 border border-white/10 text-slate-400 hover:text-white hover:border-white/20 hover:bg-slate-850"
-                }`}
-              >
-                {scanComplete ? (
-                  <Check className="w-10 h-10 animate-scaleIn text-emerald-400" />
-                ) : (
-                  <Fingerprint className={`w-12 h-12 transition-all ${isScanning ? "animate-pulse scale-105" : ""}`} />
-                )}
-
-                {/* Laser scan line overlay */}
-                {isScanning && (
-                  <motion.div 
-                    initial={{ y: -30 }}
-                    animate={{ y: 30 }}
-                    transition={{ repeat: Infinity, duration: 1, ease: "easeInOut", repeatType: "reverse" }}
-                    className="absolute left-4 right-4 h-0.5 bg-purple-400 shadow-[0_0_8px_#9b59b6] pointer-events-none"
-                  />
-                )}
-              </button>
-            </div>
-
-            <div className="space-y-1 bg-slate-900/40 p-3 rounded-2xl border border-white/5 max-w-xs mx-auto">
-              <p className="text-xs font-bold text-white">
-                {isScanning ? `Scanning... ${scanProgress}%` : "Press & HOLD sensor"}
+        <form onSubmit={handlePinSubmit} className="space-y-4 py-4 max-w-xs mx-auto">
+          <div className="space-y-1">
+            <label htmlFor="secure_pin_unlock" className="block text-[10px] font-mono text-emerald-400 uppercase tracking-wider font-bold text-left">
+              Type Security PIN
+            </label>
+            <input
+              id="secure_pin_unlock"
+              type="password"
+              maxLength={4}
+              pattern="[0-9]*"
+              inputMode="numeric"
+              value={pinInput}
+              onChange={(e) => {
+                const cleaned = e.target.value.replace(/[^0-9]/g, "");
+                setPinInput(cleaned);
+              }}
+              placeholder="••••"
+              className="w-full bg-slate-900 border border-white/10 rounded-2xl py-3.5 px-4 text-center text-xl font-mono tracking-[1.2em] text-white focus:outline-none focus:border-[#2ECC71] leading-none"
+              required
+              autoFocus
+            />
+            {!localStorage.getItem("fr_secure_unlock_pin_hash") && (
+              <p className="text-[10px] text-slate-400 text-left font-mono leading-relaxed mt-2.5 bg-slate-900/50 p-2.5 rounded-xl border border-white/5">
+                💡 No custom PIN was saved. Use standard backup passcode: <span className="text-emerald-400 font-bold">1234</span>
               </p>
-              <p className="text-[10px] text-slate-400 leading-normal">
-                Verifies registered biometric parameter files securely.
-              </p>
-            </div>
-            
-            {/* Show manual verify scan link if they have real credentials registered */}
-            {hasCredId && !isSimulated && (
-              <button
-                type="button"
-                onClick={triggerBiometricScan}
-                className="text-xs font-bold text-[#2ECC71] hover:underline block mx-auto cursor-pointer"
-              >
-                Use Native Browser scanner ID
-              </button>
             )}
           </div>
-        ) : (
-          <form onSubmit={handlePinSubmit} className="space-y-4 py-4 max-w-xs mx-auto">
-            <div className="space-y-1">
-              <label htmlFor="secure_pin_unlock" className="block text-[10px] font-mono text-emerald-400 uppercase tracking-wider font-bold text-left">
-                Type Security PIN
-              </label>
-              <input
-                id="secure_pin_unlock"
-                type="password"
-                maxLength={4}
-                pattern="[0-9]*"
-                inputMode="numeric"
-                value={pinInput}
-                onChange={(e) => {
-                  const cleaned = e.target.value.replace(/[^0-9]/g, "");
-                  setPinInput(cleaned);
-                }}
-                placeholder="••••"
-                className="w-full bg-slate-900 border border-white/10 rounded-2xl py-3.5 px-4 text-center text-xl font-mono tracking-[1.2em] text-white focus:outline-none focus:border-[#2ECC71] leading-none"
-                required
-                autoFocus
-              />
-              {!localStorage.getItem("fr_secure_unlock_pin_hash") && (
-                <p className="text-[10px] text-slate-400 text-left font-mono leading-relaxed mt-2.5 bg-slate-900/50 p-2.5 rounded-xl border border-white/5">
-                  💡 No custom PIN was saved. Use standard backup passcode: <span className="text-emerald-400 font-bold">1234</span>
-                </p>
-              )}
-            </div>
-          </form>
-        )}
+        </form>
 
         {unlockError && (
           <p className="text-[10px] text-red-400 font-mono flex items-center justify-center gap-1.5 bg-red-500/5 border border-red-500/10 py-2.5 px-3 rounded-xl max-w-sm mx-auto leading-relaxed text-left">
@@ -667,19 +317,6 @@ export function SecureUnlockOverlay({ onUnlock, currentUser }: UnlockOverlayProp
 
         {/* Unified Bottom Gated Actions */}
         <div className="flex flex-col items-center gap-3.5 pt-2 border-t border-white/5 max-w-xs mx-auto">
-          {lockType === "biometric" && (
-            <button
-              type="button"
-              onClick={() => {
-                setPinModeActive(!pinModeActive);
-                setUnlockError("");
-              }}
-              className="text-xs font-mono font-bold text-[#2ECC71] hover:text-[#27ae60] transition-colors cursor-pointer"
-            >
-              {pinModeActive ? "🧬 Scan Fingerprint Identity" : "🔢 Use Security PIN Passcode"}
-            </button>
-          )}
-
           <div className="flex gap-4 items-center">
             <button
               type="button"

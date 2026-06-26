@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { 
   UserProfile, Deposit, InvestmentPlan, ActiveInvestment, 
   FarmUpdate, Withdrawal, Notification, Referral, LivestockCategory 
@@ -8,8 +8,7 @@ import {
 } from "../appwrite";
 import { ID, Query } from "appwrite";
 
-import { onSnapshot, collection, query, where } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType as FirebaseOperationType } from "../firebase";
+import { onSnapshot, collection, query, where, getDocs, db, handleFirestoreError, OperationType as FirebaseOperationType } from "../supabase";
 
 import { 
   playNotificationChime, 
@@ -33,6 +32,7 @@ interface FarmContextType {
   loading: boolean;
   isAdminMode: boolean;
   connectionError: string | null;
+  cloudSyncError: string | null;
   reconnectAppwrite: () => Promise<void>;
   
   // Auth actions
@@ -69,6 +69,12 @@ interface FarmContextType {
   triggerMaturityCheck: () => Promise<void>;
   adjustUserWallet: (userId: string, fields: Partial<UserProfile>) => Promise<void>;
   triggerManualSync: () => Promise<void>;
+  createReferral: (referrerId: string, referredId: string, status: "pending" | "active", commissionPaid: number) => Promise<void>;
+  updateReferralStatus: (refId: string, status: "pending" | "active", commissionPaid: number) => Promise<void>;
+  deleteReferral: (refId: string) => Promise<void>;
+  userAlternateIds: string[];
+  getEmailForUserId: (userId: string) => string;
+  isCurrentUserOwner: (userId: string) => boolean;
 }
 
 const FarmContext = createContext<FarmContextType | undefined>(undefined);
@@ -406,7 +412,100 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [farmUpdates, setFarmUpdates] = useState<FarmUpdate[]>(DEFAULT_UPDATES);
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [usersState, setUsersState] = useState<UserProfile[]>([]);
+  const [userAlternateIds, setUserAlternateIds] = useState<string[]>([]);
+  const userIdToEmailMapRef = useRef<Map<string, string>>(new Map());
+
+  // Robust deduplication and merging function to prevent duplicate / flashing account artifacts
+  const mergeUsersList = useCallback((rawUsers: UserProfile[]): UserProfile[] => {
+    const mergedMap = new Map<string, UserProfile>();
+    
+    rawUsers.forEach(u => {
+      if (!u || !u.email) return;
+      if (u.id) {
+        userIdToEmailMapRef.current.set(u.id, u.email.toLowerCase().trim());
+      }
+      const emailKey = u.email.toLowerCase().trim();
+      if (emailKey === "") return;
+      
+      const existing = mergedMap.get(emailKey);
+      if (!existing) {
+        mergedMap.set(emailKey, { ...u });
+      } else {
+        // Merge properties safely!
+        // 1. Prefer ID that does not start with "sb_u_" if possible (native Supabase Auth ID takes priority)
+        const preferExistingId = existing.id && !existing.id.startsWith("sb_u_");
+        const preferNewId = u.id && !u.id.startsWith("sb_u_");
+        
+        let mergedId = existing.id;
+        if (preferNewId && !preferExistingId) {
+          mergedId = u.id;
+        } else if (!mergedId || mergedId.startsWith("sb_u_")) {
+          if (u.id) mergedId = u.id;
+        }
+        
+        // 2. Safely merge numerical properties by summing them (to preserve both sets of funds)
+        const mergedBalance = Number(((existing.balance || 0) + (u.balance || 0)).toFixed(2));
+        const mergedTotalInvested = Number(((existing.totalInvested || 0) + (u.totalInvested || 0)).toFixed(2));
+        const mergedTotalEarnings = Number(((existing.totalEarnings || 0) + (u.totalEarnings || 0)).toFixed(2));
+        const mergedReferralBonus = Number(((existing.referralBonus || 0) + (u.referralBonus || 0)).toFixed(2));
+        const mergedTotalProfit = Number(((existing.totalProfit || 0) + (u.totalProfit || 0)).toFixed(2));
+        
+        // 3. Keep any valid non-empty fields
+        const mergedName = u.name && u.name !== "Sovereign Investor" && u.name !== "Agriculture Investor" ? u.name : existing.name;
+        const mergedPhoneNumber = u.phoneNumber || existing.phoneNumber || "";
+        const mergedReferredBy = u.referredBy || existing.referredBy || "";
+        const mergedReferralCode = u.referralCode || existing.referralCode || "";
+        const mergedIsAdmin = existing.isAdmin || u.isAdmin || emailKey === "paypalclint007@gmail.com";
+        const mergedIsBanned = existing.isBanned || u.isBanned || false;
+        const mergedRegisteredAt = existing.registeredAt && existing.registeredAt < u.registeredAt ? existing.registeredAt : (u.registeredAt || existing.registeredAt);
+        
+        mergedMap.set(emailKey, {
+          id: mergedId,
+          email: u.email,
+          name: mergedName,
+          phoneNumber: mergedPhoneNumber,
+          balance: mergedBalance,
+          totalInvested: mergedTotalInvested,
+          totalEarnings: mergedTotalEarnings,
+          referralBonus: mergedReferralBonus,
+          totalProfit: mergedTotalProfit,
+          referralCode: mergedReferralCode,
+          referredBy: mergedReferredBy,
+          isAdmin: mergedIsAdmin,
+          registeredAt: mergedRegisteredAt,
+          isBanned: mergedIsBanned
+        });
+      }
+    });
+    
+    return Array.from(mergedMap.values());
+  }, []);
+
+  const setUsers = useCallback((val: UserProfile[] | ((prev: UserProfile[]) => UserProfile[])) => {
+    setUsersState(prev => {
+      const nextUsers = typeof val === "function" ? val(prev) : val;
+      return mergeUsersList(nextUsers);
+    });
+  }, [mergeUsersList]);
+
+  const getEmailForUserId = useCallback((userId: string): string => {
+    return userIdToEmailMapRef.current.get(userId) || userId;
+  }, []);
+
+  const isCurrentUserOwner = useCallback((userId: string): boolean => {
+    if (!currentUser) return false;
+    if (userId === currentUser.id) return true;
+    if (userAlternateIds.includes(userId)) return true;
+    const email1 = userIdToEmailMapRef.current.get(userId);
+    const email2 = currentUser.email;
+    if (email1 && email2 && email1.toLowerCase().trim() === email2.toLowerCase().trim()) {
+      return true;
+    }
+    return false;
+  }, [currentUser, userAlternateIds]);
+
+  const users = usersState;
   const [referrals, setReferrals] = useState<Referral[]>([]);
   
   const [currentPage, setCurrentPage] = useState<string>("splash");
@@ -414,6 +513,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(true);
   const [isAdminMode, setIsAdminMode] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
   const [isMockSync, setIsMockSync] = useState<boolean>(isMockAppwrite);
 
   const feedAiAction = async (action: string, details: any) => {
@@ -435,6 +535,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const prevPendingDepositIdsRef = useRef<string[]>([]);
   const prevPendingWithdrawIdsRef = useRef<string[]>([]);
   const prevReferralIdsRef = useRef<string[]>([]);
+  const isSyncingRef = useRef<boolean>(false);
 
   // Automated background sound alarm & push alert monitor for Chrome & PWA
   useEffect(() => {
@@ -542,45 +643,84 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userSession = await account.get();
       if (userSession) {
         let userProfile: UserProfile;
-        try {
-          const doc = await databases.getDocument(
-            APPWRITE_CONFIG.databaseId,
-            APPWRITE_CONFIG.collections.users,
-            userSession.$id
-          );
-          userProfile = mapUserFromDoc(doc);
-          // Securely enforce that only paypalclint007@gmail.com can be an administrator
-          userProfile.isAdmin = (userProfile.email || "").toLowerCase() === "paypalclint007@gmail.com";
-        } catch (err) {
-          // Create user profile document if missing or permissions are blocked
-          console.warn("Could not retrieve user document from database. Using local/fallback profile:", err);
-          const nameValue = userSession.name || "Agriculture Investor";
-          userProfile = {
-            id: userSession.$id,
-            email: userSession.email,
-            name: nameValue,
-            phoneNumber: userSession.phone || "",
-            balance: userSession.email.toLowerCase() === "paypalclint007@gmail.com" ? 25000 : 0,
-            totalInvested: 0,
-            totalEarnings: 0,
-            referralBonus: 0,
-            totalProfit: 0,
-            referralCode: "RISE" + Math.floor(Math.random() * 9000 + 1000),
-            referredBy: "",
-            isAdmin: userSession.email.toLowerCase() === "paypalclint007@gmail.com",
-            registeredAt: new Date().toISOString()
-          };
-          
-          // Try to write it in the database in the background, ignore any errors
+        let alternateIds: string[] = [userSession.$id];
+        let mergedProfile: UserProfile | null = null;
+
+        if (!isMockAppwrite) {
           try {
-            await databases.createDocument(
+            const usersColl = collection(db, "users");
+            const q = query(usersColl, where("email", "==", userSession.email.toLowerCase().trim()));
+            const querySnap = await getDocs(q);
+            if (!querySnap.empty) {
+              const rawDocs: any[] = [];
+              querySnap.forEach((docSnap) => {
+                const data = docSnap.data();
+                const id = docSnap.id;
+                rawDocs.push({ id, ...data });
+                if (!alternateIds.includes(id)) {
+                  alternateIds.push(id);
+                }
+              });
+              const mappedProfiles = rawDocs.map(mapUserFromDoc);
+              const merged = mergeUsersList(mappedProfiles);
+              if (merged.length > 0) {
+                mergedProfile = merged[0];
+              }
+            }
+          } catch (err) {
+            console.warn("Could not query all users by email in checkSession:", err);
+          }
+        }
+
+        setUserAlternateIds(alternateIds);
+
+        if (mergedProfile) {
+          userProfile = {
+            ...mergedProfile,
+            id: userSession.$id // Ensure active session ID is preserved
+          };
+          userProfile.isAdmin = (userProfile.email || "").toLowerCase() === "paypalclint007@gmail.com";
+        } else {
+          try {
+            const doc = await databases.getDocument(
               APPWRITE_CONFIG.databaseId,
               APPWRITE_CONFIG.collections.users,
-              userSession.$id,
-              mapUserToDoc(userProfile)
+              userSession.$id
             );
-          } catch (createErr) {
-            console.warn("Failed to create profile in Appwrite database during session fallback:", createErr);
+            userProfile = mapUserFromDoc(doc);
+            // Securely enforce that only paypalclint007@gmail.com can be an administrator
+            userProfile.isAdmin = (userProfile.email || "").toLowerCase() === "paypalclint007@gmail.com";
+          } catch (err) {
+            // Create user profile document if missing or permissions are blocked
+            console.warn("Could not retrieve user document from database. Using local/fallback profile:", err);
+            const nameValue = userSession.name || "Agriculture Investor";
+            userProfile = {
+              id: userSession.$id,
+              email: userSession.email,
+              name: nameValue,
+              phoneNumber: userSession.phone || "",
+              balance: userSession.email.toLowerCase() === "paypalclint007@gmail.com" ? 25000 : 0,
+              totalInvested: 0,
+              totalEarnings: 0,
+              referralBonus: 0,
+              totalProfit: 0,
+              referralCode: "RISE" + Math.floor(Math.random() * 9000 + 1000),
+              referredBy: "",
+              isAdmin: userSession.email.toLowerCase() === "paypalclint007@gmail.com",
+              registeredAt: new Date().toISOString()
+            };
+            
+            // Try to write it in the database in the background, ignore any errors
+            try {
+              await databases.createDocument(
+                APPWRITE_CONFIG.databaseId,
+                APPWRITE_CONFIG.collections.users,
+                userSession.$id,
+                mapUserToDoc(userProfile)
+              );
+            } catch (createErr) {
+              console.warn("Failed to create profile in Appwrite database during session fallback:", createErr);
+            }
           }
         }
         setCurrentUser(userProfile);
@@ -902,7 +1042,10 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Fetch real Appwrite Database lists during active sessions
   const fetchAllData = async (userProfile: UserProfile) => {
-    if (isMockAppwrite) {
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+    try {
+      if (isMockAppwrite) {
       // In mock mode, check localStorage for updates made in other views/screens or windows
       try {
         const storedUser = localStorage.getItem("fr_current_user");
@@ -965,20 +1108,64 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Load fresh current user profile from database to reflect Admin actions (deposit/withdrawal approval, balance adjustments, ban status)
     try {
-      const doc = await databases.getDocument(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.users,
-        userProfile.id
-      );
-      if (doc) {
-        const freshProfile = mapUserFromDoc(doc);
-        // Securely enforce that only paypalclint007@gmail.com can be an administrator
+      let alternateIds: string[] = [userProfile.id];
+      let mergedProfile: UserProfile | null = null;
+      if (!isMockAppwrite) {
+        try {
+          const usersColl = collection(db, "users");
+          const q = query(usersColl, where("email", "==", userProfile.email.toLowerCase().trim()));
+          const querySnap = await getDocs(q);
+          if (!querySnap.empty) {
+            const rawDocs: any[] = [];
+            querySnap.forEach((docSnap) => {
+              const data = docSnap.data();
+              const id = docSnap.id;
+              rawDocs.push({ id, ...data });
+              if (!alternateIds.includes(id)) {
+                alternateIds.push(id);
+              }
+            });
+            const mappedProfiles = rawDocs.map(mapUserFromDoc);
+            const merged = mergeUsersList(mappedProfiles);
+            if (merged.length > 0) {
+              mergedProfile = merged[0];
+            }
+          }
+        } catch (err) {
+          console.warn("Could not query all users by email in fetchAllData:", err);
+        }
+      }
+
+      setUserAlternateIds(alternateIds);
+
+      if (mergedProfile) {
+        const freshProfile = {
+          ...mergedProfile,
+          id: userProfile.id // preserve active session ID
+        };
         freshProfile.isAdmin = (freshProfile.email || "").toLowerCase() === "paypalclint007@gmail.com";
         setCurrentUser(freshProfile);
         try {
           localStorage.setItem("fr_current_user", JSON.stringify(freshProfile));
         } catch (err) {
           console.warn("localStorage push fail for fresh current_user", err);
+        }
+      } else {
+        const doc = await databases.getDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.users,
+          userProfile.id
+        );
+        if (doc) {
+          const freshProfile = mapUserFromDoc(doc);
+          // Securely enforce that only paypalclint007@gmail.com can be an administrator
+          freshProfile.isAdmin = (freshProfile.email || "").toLowerCase() === "paypalclint007@gmail.com";
+          setCurrentUser(freshProfile);
+          try {
+            localStorage.setItem("fr_current_user", JSON.stringify(freshProfile));
+          } catch (err) {
+            console.warn("localStorage push fail for fresh current_user", err);
+          }
         }
       }
     } catch (e) {
@@ -1134,10 +1321,28 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
             [Query.equal("referrerId", `code_${userProfile.referralCode.toUpperCase()}`)]
           );
         }
+        let docsByRefCode: any[] = [];
+        if (userProfile.referralCode) {
+          try {
+            docsByRefCode = await safeFetchCollection(
+              APPWRITE_CONFIG.collections.referrals,
+              [Query.equal("referrerCode", userProfile.referralCode.toUpperCase())]
+            );
+          } catch (e) {
+            console.warn("Querying by referrerCode failed:", e);
+          }
+        }
         
         const seenIds = new Set(docsById.map((d: any) => d.$id || d.id));
         documents = [...docsById];
         for (const d of docsByCode) {
+          const idVal = d.$id || d.id;
+          if (!seenIds.has(idVal)) {
+            documents.push(d);
+            seenIds.add(idVal);
+          }
+        }
+        for (const d of docsByRefCode) {
           const idVal = d.$id || d.id;
           if (!seenIds.has(idVal)) {
             documents.push(d);
@@ -1153,7 +1358,11 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.setItem("fr_referrals", JSON.stringify(mappedReferrals));
         } else {
           const cached = JSON.parse(localStorage.getItem("fr_referrals") || "[]");
-          const rest = cached.filter((c: any) => c.referrerId !== userProfile.id && c.referrerId !== `code_${userProfile.referralCode?.toUpperCase()}`);
+          const rest = cached.filter((c: any) => 
+            c.referrerId !== userProfile.id && 
+            c.referrerId !== `code_${userProfile.referralCode?.toUpperCase()}` &&
+            c.referrerCode?.toUpperCase() !== userProfile.referralCode?.toUpperCase()
+          );
           localStorage.setItem("fr_referrals", JSON.stringify([...mappedReferrals, ...rest]));
         }
       } catch (err) {
@@ -1206,25 +1415,9 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.warn("Sync server users retrieval failed:", syncErr);
         }
 
-        // Merge both lists, preferring dbUsers but adding any missing ones from syncUsers, matching by email or id
-        const mergedMap = new Map<string, UserProfile>();
-        
-        // Load sync users first as baseline
-        syncUsers.forEach(u => {
-          if (u && u.email) {
-            mergedMap.set(u.email.toLowerCase(), u);
-          }
-        });
-
-        // Overwrite or merge with dbUsers (real cloud data takes priority if present)
-        dbUsers.forEach(u => {
-          if (u && u.email) {
-            const existing = mergedMap.get(u.email.toLowerCase());
-            mergedMap.set(u.email.toLowerCase(), { ...existing, ...u });
-          }
-        });
-
-        const mergedUsers = Array.from(mergedMap.values());
+        // Merge both lists cleanly using the robust mergeUsersList function to avoid flickering and field erasure
+        const combinedUsers = [...syncUsers, ...dbUsers];
+        const mergedUsers = mergeUsersList(combinedUsers);
         setUsers(mergedUsers);
 
         try {
@@ -1236,10 +1429,16 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn("Error processing admin users list:", e);
       }
     }
+    } finally {
+      isSyncingRef.current = false;
+    }
   };
 
   const fetchPublicData = async () => {
-    if (isMockAppwrite) return;
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+    try {
+      if (isMockAppwrite) return;
     
     // Load Plans publicly
     try {
@@ -1304,21 +1503,37 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       console.warn("Error processing farm updates in public fetch:", e);
     }
+    } finally {
+      isSyncingRef.current = false;
+    }
   };
 
-  // Real-time Firestore snapshot listeners for investments and notifications
+  // Real-time Firestore snapshot listeners for complete real-time synchronization
   useEffect(() => {
     if (isMockAppwrite || !currentUser) {
       return;
     }
 
-    console.log("[FarmContext] Initiating Firestore onSnapshot listeners for investments and notifications...");
+    const handleSnapshotError = (error: any, collectionName: string) => {
+      console.error(`onSnapshot error on ${collectionName}:`, error);
+      const errStr = error instanceof Error ? error.message : String(error);
+      if (errStr.toLowerCase().includes("quota") || errStr.toLowerCase().includes("limit exceeded") || errStr.toLowerCase().includes("quota exceeded")) {
+        setCloudSyncError("Cloud Sync Paused (Firestore Quota Exceeded). Running safely on local cached databases.");
+      } else {
+        setCloudSyncError(`Cloud Sync Interrupted (${errStr}). Running on local cache.`);
+      }
+    };
+
+    console.log("[FarmContext] Initiating comprehensive Firestore onSnapshot listeners for live synchronization...");
+
+    const idsToQuery = (userAlternateIds.length > 0 ? userAlternateIds : [currentUser.id]).slice(0, 10);
+    const idsForNotifs = ["all", ...(userAlternateIds.length > 0 ? userAlternateIds : [currentUser.id])].slice(0, 10);
 
     // 1. Investments snapshot listener
     const investmentsColl = collection(db, "investments");
     const qInvestments = currentUser.isAdmin 
       ? query(investmentsColl)
-      : query(investmentsColl, where("userId", "==", currentUser.id));
+      : query(investmentsColl, where("userId", "in", idsToQuery));
 
     const unsubscribeInvestments = onSnapshot(
       qInvestments,
@@ -1343,14 +1558,13 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       },
       (error) => {
-        console.error("onSnapshot error on investments:", error);
-        handleFirestoreError(error, FirebaseOperationType.GET, "investments");
+        handleSnapshotError(error, "investments");
       }
     );
 
     // 2. Notifications snapshot listener
     const notificationsColl = collection(db, "notifications");
-    const qNotifications = query(notificationsColl, where("userId", "in", ["all", currentUser.id]));
+    const qNotifications = query(notificationsColl, where("userId", "in", idsForNotifs));
 
     const unsubscribeNotifications = onSnapshot(
       qNotifications,
@@ -1372,8 +1586,187 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       },
       (error) => {
-        console.error("onSnapshot error on notifications:", error);
-        handleFirestoreError(error, FirebaseOperationType.GET, "notifications");
+        handleSnapshotError(error, "notifications");
+      }
+    );
+
+    // 3. Deposits snapshot listener (Admin sees all, user sees owned)
+    const depositsColl = collection(db, "deposits");
+    const qDeposits = currentUser.isAdmin
+      ? query(depositsColl)
+      : query(depositsColl, where("userId", "in", idsToQuery));
+
+    const unsubscribeDeposits = onSnapshot(
+      qDeposits,
+      (snapshot) => {
+        const docs: any[] = [];
+        snapshot.forEach((docSnap) => {
+          docs.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        const mapped = docs.map(mapDepositFromDoc);
+        setDeposits(mapped);
+
+        try {
+          if (currentUser.isAdmin) {
+            localStorage.setItem("fr_deposits", JSON.stringify(mapped));
+          } else {
+            const cached = JSON.parse(localStorage.getItem("fr_deposits") || "[]");
+            const rest = cached.filter((c: any) => c.userId !== currentUser.id);
+            localStorage.setItem("fr_deposits", JSON.stringify([...mapped, ...rest]));
+          }
+        } catch (err) {
+          console.warn("localStorage push fail for real-time Deposits", err);
+        }
+      },
+      (error) => {
+        handleSnapshotError(error, "deposits");
+      }
+    );
+
+    // 4. Withdrawals snapshot listener (Admin sees all, user sees owned)
+    const withdrawalsColl = collection(db, "withdrawals");
+    const qWithdrawals = currentUser.isAdmin
+      ? query(withdrawalsColl)
+      : query(withdrawalsColl, where("userId", "in", idsToQuery));
+
+    const unsubscribeWithdrawals = onSnapshot(
+      qWithdrawals,
+      (snapshot) => {
+        const docs: any[] = [];
+        snapshot.forEach((docSnap) => {
+          docs.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        const mapped = docs.map(mapWithdrawalFromDoc);
+        setWithdrawals(mapped);
+
+        try {
+          if (currentUser.isAdmin) {
+            localStorage.setItem("fr_withdrawals", JSON.stringify(mapped));
+          } else {
+            const cached = JSON.parse(localStorage.getItem("fr_withdrawals") || "[]");
+            const rest = cached.filter((c: any) => c.userId !== currentUser.id);
+            localStorage.setItem("fr_withdrawals", JSON.stringify([...mapped, ...rest]));
+          }
+        } catch (err) {
+          console.warn("localStorage push fail for real-time Withdrawals", err);
+        }
+      },
+      (error) => {
+        handleSnapshotError(error, "withdrawals");
+      }
+    );
+
+    // 5. Users list snapshot listener (Admin only)
+    let unsubscribeUsers = () => {};
+    if (currentUser.isAdmin) {
+      const usersColl = collection(db, "users");
+      const qUsers = query(usersColl);
+      unsubscribeUsers = onSnapshot(
+        qUsers,
+        (snapshot) => {
+          const docs: any[] = [];
+          snapshot.forEach((docSnap) => {
+            docs.push({ id: docSnap.id, ...docSnap.data() });
+          });
+          const mapped = docs.map(mapUserFromDoc);
+          setUsers(mapped);
+          try {
+            localStorage.setItem("fr_users", JSON.stringify(mapped));
+          } catch (err) {
+            console.warn("localStorage push fail for real-time Users", err);
+          }
+        },
+        (error) => {
+          handleSnapshotError(error, "users");
+        }
+      );
+    }
+
+    // 6. Plans snapshot listener
+    const plansColl = collection(db, "investmentPlans");
+    const unsubscribePlans = onSnapshot(
+      query(plansColl),
+      (snapshot) => {
+        const docs: any[] = [];
+        snapshot.forEach((docSnap) => {
+          docs.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        const mapped = docs.map(mapPlanFromDoc);
+        if (mapped.length > 0) {
+          setPlans(mapped);
+          try {
+            localStorage.setItem("fr_plans", JSON.stringify(mapped));
+          } catch (err) {
+            console.warn("localStorage push fail for plans", err);
+          }
+        }
+      },
+      (error) => {
+        handleSnapshotError(error, "plans");
+      }
+    );
+
+    // 7. Farm Updates snapshot listener
+    const updatesColl = collection(db, "farmUpdates");
+    const unsubscribeUpdates = onSnapshot(
+      query(updatesColl),
+      (snapshot) => {
+        const docs: any[] = [];
+        snapshot.forEach((docSnap) => {
+          docs.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        const mapped = docs.map(mapFarmUpdateFromDoc);
+        if (mapped.length > 0) {
+          const sorted = mapped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setFarmUpdates(sorted);
+          try {
+            localStorage.setItem("fr_updates", JSON.stringify(sorted));
+          } catch (err) {
+            console.warn("localStorage push fail for updates", err);
+          }
+        }
+      },
+      (error) => {
+        handleSnapshotError(error, "updates");
+      }
+    );
+
+    // 8. Referrals snapshot listener
+    const referralsColl = collection(db, "referrals");
+    const unsubscribeReferrals = onSnapshot(
+      query(referralsColl),
+      (snapshot) => {
+        const docs: any[] = [];
+        snapshot.forEach((docSnap) => {
+          docs.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        const filtered = currentUser.isAdmin 
+          ? docs 
+          : docs.filter((r: any) => 
+              isCurrentUserOwner(r.referrerId) || 
+              r.referrerId === `code_${currentUser.referralCode?.toUpperCase()}` || 
+              r.referrerCode?.toUpperCase() === currentUser.referralCode?.toUpperCase()
+            );
+        setReferrals(filtered);
+
+        try {
+          if (currentUser.isAdmin) {
+            localStorage.setItem("fr_referrals", JSON.stringify(filtered));
+          } else {
+            const cached = JSON.parse(localStorage.getItem("fr_referrals") || "[]");
+            const rest = cached.filter((c: any) => 
+              !isCurrentUserOwner(c.referrerId) && 
+              c.referrerId !== `code_${currentUser.referralCode?.toUpperCase()}` && 
+              c.referrerCode?.toUpperCase() !== currentUser.referralCode?.toUpperCase()
+            );
+            localStorage.setItem("fr_referrals", JSON.stringify([...filtered, ...rest]));
+          }
+        } catch (err) {
+          console.warn("localStorage push fail for real-time Referrals", err);
+        }
+      },
+      (error) => {
+        handleSnapshotError(error, "referrals");
       }
     );
 
@@ -1381,8 +1774,14 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log("[FarmContext] Cleaning up Firestore onSnapshot listeners...");
       unsubscribeInvestments();
       unsubscribeNotifications();
+      unsubscribeDeposits();
+      unsubscribeWithdrawals();
+      unsubscribeUsers();
+      unsubscribePlans();
+      unsubscribeUpdates();
+      unsubscribeReferrals();
     };
-  }, [currentUser, isMockAppwrite]);
+  }, [currentUser, isMockAppwrite, userAlternateIds]);
 
   // Real-time synchronization loop when user or guest is active
   useEffect(() => {
@@ -1396,13 +1795,26 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Setup polling backstop to ensure data consistency
+    let pollRate = 30000; // default to a safe and robust 30s backstop to prevent lag/glitches
+    try {
+      const override = localStorage.getItem("fr_sync_rate_override");
+      if (override === "manual") {
+        pollRate = 999999999; // effectively disabled
+      } else if (override) {
+        const parsed = parseInt(override, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          pollRate = parsed * 1000;
+        }
+      }
+    } catch (e) {}
+
     const interval = setInterval(() => {
       if (currentUser) {
         fetchAllData(currentUser);
       } else {
         fetchPublicData();
       }
-    }, 2000);
+    }, pollRate);
 
     let unsubscribe = () => {};
     const handleRealtimeFail = () => {
@@ -1655,24 +2067,22 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (cleanReferredCode) {
         onStatusChange?.("Attaching referral link...");
         await new Promise((r) => setTimeout(r, 400));
-        const referrer = users.find(u => u.referralCode.toUpperCase() === cleanReferredCode);
-        if (referrer) {
-          const newRefRecord: Referral = {
-            id: "ref_" + Date.now(),
-            referrerId: referrer.id,
-            referrerCode: cleanReferredCode,
-            referredId: mockUid,
-            referredName: name,
-            referredEmail: email,
-            referredPhone: phoneNumber,
-            status: "pending",
-            commissionPaid: 0,
-            createdAt: new Date().toISOString()
-          };
-          const updatedRefs = [newRefRecord, ...referrals];
-          setReferrals(updatedRefs);
-          syncLocal("fr_referrals", updatedRefs);
-        }
+        const referrer = users.find(u => u.referralCode?.toUpperCase() === cleanReferredCode);
+        const newRefRecord: Referral = {
+          id: "ref_" + Date.now(),
+          referrerId: referrer ? referrer.id : `code_${cleanReferredCode}`,
+          referrerCode: cleanReferredCode,
+          referredId: mockUid,
+          referredName: name,
+          referredEmail: email,
+          referredPhone: phoneNumber,
+          status: "pending",
+          commissionPaid: 0,
+          createdAt: new Date().toISOString()
+        };
+        const updatedRefs = [newRefRecord, ...referrals];
+        setReferrals(updatedRefs);
+        syncLocal("fr_referrals", updatedRefs);
       }
 
       onStatusChange?.("Redirecting to your investment portal...");
@@ -1842,10 +2252,12 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (cleanReferredCode) {
             const mockReferrals = JSON.parse(localStorage.getItem("fr_referrals") || "[]");
+            const referrerUser = localUsers.find((u: any) => u.referralCode?.toUpperCase() === cleanReferredCode) || 
+                                 users.find(u => u.referralCode?.toUpperCase() === cleanReferredCode);
             const newRefRecord: Referral = {
               id: "ref_" + Date.now(),
-              referrerId: "ref_referrer",
-              referrerCode: referredCode,
+              referrerId: referrerUser ? referrerUser.id : `code_${cleanReferredCode}`,
+              referrerCode: cleanReferredCode,
               referredId: mockUid,
               referredName: name,
               referredEmail: email,
@@ -1939,7 +2351,10 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let updatedUserList = [...users];
 
       if (currentUser.referredBy) {
-        const activeRefIndex = newRefs.findIndex(r => r.referredId === currentUser.id && r.status === "pending");
+        const activeRefIndex = newRefs.findIndex(r => 
+          (r.referredId === currentUser.id || r.referredEmail?.toLowerCase() === currentUser.email?.toLowerCase()) && 
+          r.status === "pending"
+        );
         if (activeRefIndex !== -1) {
           const activeRef = { ...newRefs[activeRefIndex] };
           const commission = Number((amount * 0.05).toFixed(2));
@@ -2082,31 +2497,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       );
 
-      // Trigger instant referral completion in Live DB mode on deposit creation
-      if (currentUser.referredBy) {
-        try {
-          const matches = await safeFetchCollectionOuter(
-            APPWRITE_CONFIG.collections.referrals,
-            [Query.equal("referredId", currentUser.id)]
-          );
-          const refData = matches.find((r: any) => r.status === "pending");
-          if (refData) {
-            const commission = Number((amount * 0.05).toFixed(2));
-            const targetRefId = refData.$id || refData.id;
-            await databases.updateDocument(
-              APPWRITE_CONFIG.databaseId,
-              APPWRITE_CONFIG.collections.referrals,
-              targetRefId,
-              {
-                status: "active",
-                commissionPaid: commission
-              }
-            ).catch(err => console.warn("Live referral update error during deposit create:", err));
-          }
-        } catch (err) {
-          console.error("Live referral check failed during deposit create:", err);
-        }
-      }
+      // Referrals will only be approved/activated when they actually buy an investment, not on deposit creation.
 
       // Trigger background AI receipt audit (Live DB Mode)
       setTimeout(async () => {
@@ -2215,7 +2606,10 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       let newRefs = [...referrals];
       if (currentUser.referredBy) {
-        const activeRefIndex = newRefs.findIndex(r => r.referredId === currentUser.id && r.status === "pending");
+        const activeRefIndex = newRefs.findIndex(r => 
+          (r.referredId === currentUser.id || r.referredEmail?.toLowerCase() === currentUser.email?.toLowerCase()) && 
+          r.status === "pending"
+        );
         if (activeRefIndex !== -1) {
           const activeRef = { ...newRefs[activeRefIndex] };
           const commission = Number((amount * 0.05).toFixed(2));
@@ -2355,12 +2749,19 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const rDoc = referrerDoc;
             
             try {
-              const matches = await safeFetchCollectionOuter(
+              let matches = await safeFetchCollectionOuter(
                 APPWRITE_CONFIG.collections.referrals,
                 [Query.equal("referredId", currentUser.id)]
               );
+              let refData = matches.find((r: any) => r.status === "pending");
               
-              const refData = matches.find((r: any) => r.status === "pending");
+              if (!refData && currentUser.email) {
+                const matchesByEmail = await safeFetchCollectionOuter(
+                  APPWRITE_CONFIG.collections.referrals,
+                  [Query.equal("referredEmail", currentUser.email)]
+                );
+                refData = matchesByEmail.find((r: any) => r.status === "pending");
+              }
               if (refData) {
                 const commission = Number((amount * 0.05).toFixed(2));
                 const targetRefId = refData.$id || refData.id;
@@ -2423,7 +2824,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Enforce referral requirement check (except for Admin)
     if (currentUser && !currentUser.isAdmin) {
       const myRefs = referrals.filter(r => 
-        r.referrerId === currentUser.id || 
+        isCurrentUserOwner(r.referrerId) || 
         r.referrerId === `code_${currentUser.referralCode?.toUpperCase()}` || 
         r.referrerCode?.toUpperCase() === currentUser.referralCode?.toUpperCase()
       );
@@ -2431,6 +2832,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const activeInvestingRefs = myRefs.filter(r => 
         r.status === "active" || 
         r.status === "complete" || 
+        deposits.some(d => d.userId === r.referredId || d.userId?.toLowerCase() === r.referredEmail?.toLowerCase()) ||
         investments.some(inv => inv.userId === r.referredId)
       );
 
@@ -2548,56 +2950,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         let updatedUserList = users.map(u => u.id === target.userId ? updatedTargetUser : u);
 
-        // -- REFERRAL COMMISSION & ACTIVATION ON DEPOSIT IN MOCK MODE --
-        let newRefs = [...referrals];
-        if (targetUser.referredBy) {
-          const activeRefIndex = newRefs.findIndex(r => r.referredId === target.userId && r.status === "pending");
-          if (activeRefIndex !== -1) {
-            const activeRef = { ...newRefs[activeRefIndex] };
-            const commission = Number((target.amount * 0.05).toFixed(2));
-            activeRef.status = "active";
-            activeRef.commissionPaid = commission;
-            newRefs[activeRefIndex] = activeRef;
-
-            setReferrals(newRefs);
-            syncLocal("fr_referrals", newRefs);
-
-            updatedUserList = updatedUserList.map(u => {
-              if (u.referralCode === targetUser.referredBy) {
-                return {
-                  ...u,
-                  referralBonus: Number((u.referralBonus + commission).toFixed(2)),
-                  balance: Number((u.balance + commission).toFixed(2))
-                };
-              }
-              return u;
-            });
-
-            if (currentUser && currentUser.referralCode === targetUser.referredBy) {
-              const updatedCurrentUser: UserProfile = {
-                ...currentUser,
-                referralBonus: Number((currentUser.referralBonus + commission).toFixed(2)),
-                balance: Number((currentUser.balance + commission).toFixed(2))
-              };
-              setCurrentUser(updatedCurrentUser);
-              syncLocal("fr_current_user", updatedCurrentUser);
-            }
-
-            const refUser = updatedUserList.find(u => u.referralCode === targetUser.referredBy);
-            if (refUser) {
-              const rNotif: Notification = {
-                id: "not_" + Date.now() + "_ref_deposit",
-                userId: refUser.id,
-                title: "Referral Commission Received! 🎁",
-                message: `You earned +₦${commission} (5% direct commission) as your partner ${targetUser.name} made a successful deposit!`,
-                isRead: false,
-                createdAt: new Date().toISOString()
-              };
-              notifications.unshift(rNotif);
-            }
-          }
-        }
-        // -- END REFERRAL DEPOSIT COMMISSION --
+        // Referral remains pending on deposit. It only activates/approves when the referred user invests.
 
         setUsers(updatedUserList);
         syncLocal("fr_users", updatedUserList);
@@ -2658,98 +3011,7 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       );
 
-      // -- REFERRAL COMMISSION & ACTIVATION ON DEPOSIT IN LIVE MODE --
-      if (u.referredBy) {
-        try {
-          let referrerDoc: UserProfile | null = null;
-          try {
-            const referrerQuery = await databases.listDocuments(
-              APPWRITE_CONFIG.databaseId,
-              APPWRITE_CONFIG.collections.users,
-              [Query.equal("referralCode", u.referredBy)]
-            );
-            if (referrerQuery.documents.length > 0) {
-              referrerDoc = mapUserFromDoc(referrerQuery.documents[0]);
-            }
-          } catch (queryErr) {
-            console.warn("Index query for referralCode failed on payout check. Performing fallback scan.", queryErr);
-          }
-
-          if (!referrerDoc) {
-            try {
-              const allUsersDocs = await databases.listDocuments(
-                APPWRITE_CONFIG.databaseId,
-                APPWRITE_CONFIG.collections.users,
-                []
-              );
-              const mappedUsers = allUsersDocs.documents.map(mapUserFromDoc);
-              const match = mappedUsers.find(user => user.referralCode.toUpperCase() === u.referredBy.toUpperCase());
-              if (match) {
-                referrerDoc = match;
-              }
-            } catch (fallbackErr) {
-              console.error("Fallback scan for payout referrer failed:", fallbackErr);
-            }
-          }
-
-          if (referrerDoc) {
-            const rDoc = referrerDoc;
-            try {
-              const matches = await safeFetchCollectionOuter(
-                APPWRITE_CONFIG.collections.referrals,
-                [Query.equal("referredId", u.id)]
-              );
-              const refData = matches.find((r: any) => r.status === "pending");
-              if (refData) {
-                const commission = Number((target.amount * 0.05).toFixed(2));
-                const targetRefId = refData.$id || refData.id;
-
-                await databases.updateDocument(
-                  APPWRITE_CONFIG.databaseId,
-                  APPWRITE_CONFIG.collections.referrals,
-                  targetRefId,
-                  {
-                    referrerId: rDoc.id,
-                    status: "active",
-                    commissionPaid: commission
-                  }
-                );
-
-                await databases.updateDocument(
-                  APPWRITE_CONFIG.databaseId,
-                  APPWRITE_CONFIG.collections.users,
-                  rDoc.id,
-                  {
-                    referralBonus: Number((rDoc.referralBonus + commission).toFixed(2)),
-                    balance: Number((rDoc.balance + commission).toFixed(2)),
-                    walletBalance: Number((rDoc.balance + commission).toFixed(2))
-                  }
-                );
-
-                const rNotifId = "not_" + Date.now() + "_ref_deposit";
-                await databases.createDocument(
-                  APPWRITE_CONFIG.databaseId,
-                  APPWRITE_CONFIG.collections.notifications,
-                  rNotifId,
-                  {
-                    id: rNotifId,
-                    userId: rDoc.id,
-                    title: "Referral Commission Received! 🎁",
-                    message: `You earned +₦${commission} (5% direct commission) as your partner ${u.name} made a successful deposit!`,
-                    isRead: false,
-                    createdAt: new Date().toISOString()
-                  }
-                );
-              }
-            } catch (err) {
-              console.error("Referral payout document adjustment error:", err);
-            }
-          }
-        } catch (err) {
-          console.error("Referral query lookup error:", err);
-        }
-      }
-      // -- END REFERRAL DEPOSIT COMMISSION --
+      // Referral remains pending on deposit in Live DB mode. It only activates/approves when the referred user invests.
 
       // Force immediate local state synchronization
       if (currentUser) {
@@ -3586,6 +3848,143 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const createReferral = async (referrerId: string, referredId: string, status: "pending" | "active", commissionPaid: number) => {
+    const referrer = users.find(u => u.id === referrerId);
+    const referred = users.find(u => u.id === referredId);
+    if (!referrer || !referred) {
+      throw new Error("Referrer and Referred users must be valid registered users.");
+    }
+
+    const refId = "ref_" + Date.now();
+    const newRef: Referral = {
+      id: refId,
+      referrerId: referrer.id,
+      referrerCode: referrer.referralCode,
+      referredId: referred.id,
+      referredName: referred.name,
+      referredEmail: referred.email,
+      referredPhone: referred.phoneNumber || referred.phone || "",
+      status: status,
+      commissionPaid: commissionPaid,
+      createdAt: new Date().toISOString()
+    };
+
+    if (isMockAppwrite) {
+      const updatedRefs = [newRef, ...referrals];
+      setReferrals(updatedRefs);
+      syncLocal("fr_referrals", updatedRefs);
+
+      // If active, update referrer's balance
+      if (status === "active" && commissionPaid > 0) {
+        const updatedUsers = users.map(u => {
+          if (u.id === referrer.id) {
+            return {
+              ...u,
+              referralBonus: Number((u.referralBonus + commissionPaid).toFixed(2)),
+              balance: Number((u.balance + commissionPaid).toFixed(2))
+            };
+          }
+          return u;
+        });
+        setUsers(updatedUsers);
+        syncLocal("fr_users", updatedUsers);
+      }
+    } else {
+      await databases.createDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.referrals,
+        refId,
+        newRef
+      );
+
+      // If active, update referrer's balance in Firestore
+      if (status === "active" && commissionPaid > 0) {
+        const newBalance = Number((referrer.balance + commissionPaid).toFixed(2));
+        await databases.updateDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.users,
+          referrer.id,
+          {
+            referralBonus: Number((referrer.referralBonus + commissionPaid).toFixed(2)),
+            balance: newBalance,
+            walletBalance: newBalance
+          }
+        );
+      }
+    }
+  };
+
+  const updateReferralStatus = async (refId: string, status: "pending" | "active", commissionPaid: number) => {
+    const ref = referrals.find(r => r.id === refId);
+    if (!ref) throw new Error("Referral record not found.");
+
+    if (isMockAppwrite) {
+      const updatedRefs = referrals.map(r => {
+        if (r.id === refId) {
+          return { ...r, status, commissionPaid };
+        }
+        return r;
+      });
+      setReferrals(updatedRefs);
+      syncLocal("fr_referrals", updatedRefs);
+
+      // If status changed to active, update referrer's balance
+      if (status === "active" && ref.status === "pending" && commissionPaid > 0) {
+        const updatedUsers = users.map(u => {
+          if (u.id === ref.referrerId) {
+            return {
+              ...u,
+              referralBonus: Number((u.referralBonus + commissionPaid).toFixed(2)),
+              balance: Number((u.balance + commissionPaid).toFixed(2))
+            };
+          }
+          return u;
+        });
+        setUsers(updatedUsers);
+        syncLocal("fr_users", updatedUsers);
+      }
+    } else {
+      await databases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.referrals,
+        refId,
+        { status, commissionPaid }
+      );
+
+      // If status changed to active, update referrer's balance in Firestore
+      if (status === "active" && ref.status === "pending" && commissionPaid > 0) {
+        const referrer = users.find(u => u.id === ref.referrerId);
+        if (referrer) {
+          const newBalance = Number((referrer.balance + commissionPaid).toFixed(2));
+          await databases.updateDocument(
+            APPWRITE_CONFIG.databaseId,
+            APPWRITE_CONFIG.collections.users,
+            referrer.id,
+            {
+              referralBonus: Number((referrer.referralBonus + commissionPaid).toFixed(2)),
+              balance: newBalance,
+              walletBalance: newBalance
+            }
+          );
+        }
+      }
+    }
+  };
+
+  const deleteReferral = async (refId: string) => {
+    if (isMockAppwrite) {
+      const updatedRefs = referrals.filter(r => r.id !== refId);
+      setReferrals(updatedRefs);
+      syncLocal("fr_referrals", updatedRefs);
+    } else {
+      await databases.deleteDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.referrals,
+        refId
+      );
+    }
+  };
+
   const triggerManualSync = async () => {
     if (currentUser) {
       await fetchAllData(currentUser);
@@ -3598,12 +3997,14 @@ export const FarmProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <FarmProviderValue {...{
       currentUser, plans, categories, deposits, investments, withdrawals, notifications, 
       farmUpdates, users, referrals, currentPage, selectedPlan, loading, isAdminMode,
-      connectionError, reconnectAppwrite,
+      connectionError, cloudSyncError, reconnectAppwrite,
       loginWithEmail, registerWithEmail, logout, navigate, forgotPassword,
       createDeposit, createInvestment, withdrawMaturedInvestment, createWithdrawal, markNotificationRead,
       approveDeposit, rejectDeposit, approveWithdrawal, rejectWithdrawal,
       createOrUpdatePlan, createOrUpdateCategory, deletePlan, createFarmUpdate, editFarmUpdate, deleteFarmUpdate, banUser, adjustUserWallet, sendBroadcastNotification,
-      toggleAdminMode, quickAddFunds, triggerMaturityCheck, triggerManualSync, children
+      createReferral, updateReferralStatus, deleteReferral,
+      toggleAdminMode, quickAddFunds, triggerMaturityCheck, triggerManualSync,
+      userAlternateIds, getEmailForUserId, isCurrentUserOwner, children
     }} />
   );
 };

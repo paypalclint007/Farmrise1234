@@ -45,52 +45,58 @@ if (typeof window !== "undefined") {
       let wsDisconnectCount = 0;
       (window as any).__disableAppwriteRealtime = false;
 
-      class CustomWebSocket extends OriginalWebSocket {
-        constructor(url: string | URL, protocols?: string | string[]) {
-          const urlStr = url.toString();
-          if ((window as any).__disableAppwriteRealtime && urlStr.includes("/realtime")) {
-            // Point to a safe dummy WebSocket to gracefully drop any further connection storms
-            super("ws://localhost:9999/dummy-realtime-disabled", protocols);
-            return;
-          }
-
-          super(url, protocols);
+      const WebSocketProxy = new Proxy(OriginalWebSocket, {
+        construct(target, args) {
+          const [url, protocols] = args;
+          const urlStr = url ? url.toString() : "";
 
           if (urlStr.includes("/realtime")) {
-            this.addEventListener("close", () => {
-              wsDisconnectCount++;
-              if (wsDisconnectCount >= 3) {
-                (window as any).__disableAppwriteRealtime = true;
-                window.dispatchEvent(new CustomEvent("appwrite_realtime_fail"));
-              }
-            });
+            console.log("[FarmRise WS Supervisor] Bypassing native WebSocket connection for Appwrite realtime channel:", urlStr);
+            // Return a safe mock WebSocket object that opens immediately and drops/logs payloads
+            const mockWS = {
+              url: urlStr,
+              readyState: 1, // WebSocket.OPEN
+              send: function(data: any) {
+                console.log("[MockWebSocket] Intercepted send data:", data);
+              },
+              close: function() {
+                console.log("[MockWebSocket] Intercepted close request.");
+              },
+              addEventListener: function(type: string, listener: any) {
+                if (type === "open") {
+                  setTimeout(() => {
+                    try {
+                      listener({ type: "open" });
+                    } catch (e) {}
+                  }, 50);
+                }
+              },
+              removeEventListener: function() {},
+              dispatchEvent: function() { return true; },
+              onopen: null,
+              onclose: null,
+              onerror: null,
+              onmessage: null,
+            };
+            return mockWS as any;
           }
-        }
 
-        override send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
-          if (this.readyState !== 1) { // 1 is WebSocket.OPEN
-            console.warn(`[CustomWebSocket] Attempted to send while readyState is not OPEN (readyState: ${this.readyState}). Safely dropping message.`);
-            return;
-          }
-          try {
-            super.send(data);
-          } catch (err) {
-            console.warn("[CustomWebSocket] Error during custom WebSocket send:", err);
-          }
+          const ws = protocols ? new target(url, protocols) : new target(url);
+          return ws;
         }
-      }
+      });
 
       // Try defining WebSocket on window. If it fails (read-only/getter-only), it triggers the catch block.
       try {
         Object.defineProperty(window, "WebSocket", {
-          value: CustomWebSocket,
+          value: WebSocketProxy,
           writable: true,
           configurable: true,
           enumerable: true
         });
       } catch (e1) {
         // Fallback: direct assignment
-        (window as any).WebSocket = CustomWebSocket;
+        (window as any).WebSocket = WebSocketProxy;
       }
     }
   } catch (err) {
@@ -113,8 +119,19 @@ export function cleanQuoteString(raw: any, fallback: string = ""): string {
 
 // Check if we are using local storage mock fallback (when Appwrite Credentials are not set in the environment)
 const initialConfig = getAppwriteConfig();
-// We are running on fully persistent Firebase backend engine
-export let isMockAppwrite = false;
+
+// Determine database mode: defaults to "local" (the normal offline database) to bypass Firestore quota limits
+const getInitialDatabaseMode = (): boolean => {
+  if (typeof window === "undefined") return false;
+  const stored = localStorage.getItem("fr_database_mode");
+  if (stored === "local") return true;
+  if (stored === "cloud") return false;
+  
+  // Default to local/normal database to ensure zero-quota hassle-free operations out of the box
+  return true; 
+};
+
+export let isMockAppwrite = getInitialDatabaseMode();
 
 export const client = new Client();
 export const realtimeClient = new Client();
@@ -332,12 +349,8 @@ if (typeof window !== "undefined") {
   console.groupEnd();
 }
 
-if (!isMockAppwrite) {
-  const browserSafeEndpoint = typeof window !== "undefined" ? `${window.location.origin}/api/appwrite` : endpoint;
-  client.setEndpoint(browserSafeEndpoint).setProject(projectId);
-  const realEndpoint = endpoint.includes("/api/appwrite") ? "https://cloud.appwrite.io/v1" : endpoint;
-  realtimeClient.setEndpoint(realEndpoint).setProject(projectId);
-}
+// Appwrite live connection is disabled to use Supabase natively
+console.log("[FarmRise Appwrite Adapter] Appwrite SDK client connection bypassed. Operating on native Supabase database.");
 
 export function reconfigureAppwrite(cfg: {
   endpoint: string;
@@ -346,21 +359,16 @@ export function reconfigureAppwrite(cfg: {
   useMock: boolean;
   collections?: any;
 }) {
-  isMockAppwrite = false;
-  if (cfg.projectId) {
-    const browserSafeEndpoint = typeof window !== "undefined" ? `${window.location.origin}/api/appwrite` : cfg.endpoint;
-    client.setEndpoint(browserSafeEndpoint).setProject(cfg.projectId);
-    const realEndpoint = cfg.endpoint.includes("/api/appwrite") ? "https://cloud.appwrite.io/v1" : cfg.endpoint;
-    realtimeClient.setEndpoint(realEndpoint).setProject(cfg.projectId);
-    APPWRITE_CONFIG.databaseId = cfg.databaseId;
-    if (cfg.collections) {
-      Object.assign(APPWRITE_CONFIG.collections, cfg.collections);
-    }
-    console.log("Appwrite client reconfigured to live mode (with proxy browser routing):", cfg.projectId);
+  // Respect the dynamically chosen database mode
+  isMockAppwrite = typeof window !== "undefined" ? (localStorage.getItem("fr_database_mode") !== "cloud") : false;
+  APPWRITE_CONFIG.databaseId = cfg.databaseId;
+  if (cfg.collections) {
+    Object.assign(APPWRITE_CONFIG.collections, cfg.collections);
   }
+  console.log("Appwrite configuration mapped to database mode:", isMockAppwrite ? "LOCAL" : "SUPABASE", cfg.databaseId);
 }
 
-import { simulatedAccount, simulatedDatabases } from "./firebase";
+import { simulatedAccount, simulatedDatabases } from "./supabase";
 export const account = simulatedAccount as any;
 export const databases = simulatedDatabases as any;
 
@@ -800,23 +808,23 @@ export function handleAppwriteError(error: unknown, operationType: OperationType
     operationType,
     path,
   };
-  console.error("Firebase Exception Catch:", JSON.stringify(errInfo));
+  console.error("Supabase Exception Catch:", JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
 
 // Check database connection
 export async function testConnection() {
   if (isMockAppwrite) {
-    console.log("Firebase is running in local sandbox mode. Database is stored locally in client partition.");
+    console.log("Supabase is running in local sandbox mode. Database is stored locally in client partition.");
     return false;
   }
   try {
     // Standard connection probe using plan query schema
     await databases.listDocuments(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.plans, []);
-    console.log("Firebase secure database connection established successfully.");
+    console.log("Supabase secure database connection established successfully.");
     return true;
   } catch (error) {
-    console.log("Firebase connected check completed (database is ready or offline).");
+    console.log("Supabase connected check completed (database is ready or offline).");
     return true;
   }
 }

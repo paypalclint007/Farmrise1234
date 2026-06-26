@@ -3,8 +3,7 @@ const ASSETS_TO_CACHE = [
   "/",
   "/index.html",
   "/manifest.json",
-  "/icon.png",
-  "/favicon.ico"
+  "/icon.png"
 ];
 
 // Install Service Worker and cache essential static assets

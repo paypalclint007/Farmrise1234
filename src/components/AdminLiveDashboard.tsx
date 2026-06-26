@@ -125,7 +125,7 @@ export default function AdminLiveDashboard() {
   const [loading, setLoading] = useState(users.length === 0 && deposits.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(new Date());
-  const [refreshIntervalSec, setRefreshIntervalSec] = useState<number>(5); // Default polling 5s
+  const [refreshIntervalSec, setRefreshIntervalSec] = useState<number>(30); // Default polling 30s to prevent rate limits and glitches
   const [isSyncing, setIsSyncing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
@@ -259,7 +259,7 @@ export default function AdminLiveDashboard() {
   // API aggregation method
   const fetchLiveStatsFromAppwrite = useCallback(async () => {
     setIsSyncing(true);
-    addLog("Polling database live collections via Firebase/Firestore client...", "info");
+    addLog("Polling database live collections via Supabase client...", "info");
     
     try {
       let fetchedUsersDocs: any[] = [];
@@ -278,8 +278,8 @@ export default function AdminLiveDashboard() {
           addLog("Offline store retrieval failed.", "error");
         }
       } else {
-        // Direct Query Firebase client IN PARALLEL for ultra-performance (instant return!)
-        addLog(`Initiating concurrent fetch requests to Firebase Firestore`, "info");
+        // Direct Query Supabase client IN PARALLEL for ultra-performance (instant return!)
+        addLog(`Initiating concurrent fetch requests to Supabase Database`, "info");
 
         const [uRes, dRes, iRes, wRes] = await Promise.all([
           databases.listDocuments(APPWRITE_CONFIG.databaseId, APPWRITE_CONFIG.collections.users, [Query.limit(5000)]).catch((err: any) => {
@@ -321,7 +321,7 @@ export default function AdminLiveDashboard() {
       setLastUpdated(new Date());
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Failed to parse live Firebase/Firestore datasets");
+      setError(err.message || "Failed to parse live Supabase datasets");
       addLog(`Aggregation error: ${err.message || String(err)}`, "error");
     } finally {
       setIsSyncing(false);
@@ -360,7 +360,7 @@ export default function AdminLiveDashboard() {
             </h2>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Connected live to production Firebase/Firestore Database. Real-time updates automatically feed this console.
+            Connected live to production Supabase Database. Real-time updates automatically feed this console.
           </p>
         </div>
 
@@ -428,7 +428,7 @@ export default function AdminLiveDashboard() {
         <div className="flex items-center gap-4 text-xs font-mono">
           <div className="text-right">
             <span className="text-[10px] text-slate-500 block">Endpoint Type</span>
-            <span className="text-slate-300 font-semibold">{isMockAppwrite ? "localStorage.mock" : "Firebase Firestore Native"}</span>
+            <span className="text-slate-300 font-semibold">{isMockAppwrite ? "localStorage.mock" : "Supabase Native"}</span>
           </div>
           <div className="text-right">
             <span className="text-[10px] text-slate-500 block">Last Cloud Sync</span>
@@ -647,6 +647,23 @@ export default function AdminLiveDashboard() {
                 </div>
                 <span className="text-xs font-mono font-bold text-slate-500 group-hover:text-white transition-all">Dispatch →</span>
               </div>
+
+              {/* Affiliate Network & Referrals */}
+              <div 
+                onClick={() => navigate("admin-referrals")}
+                className="glass-panel p-4.5 rounded-2xl flex justify-between items-center cursor-pointer hover:border-white/15 bg-slate-950/25 transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-400">
+                    <Award className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Affiliate Partner Networks & Milestones</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Approve direct referral connections, link new partners, and credit bonuses</p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono font-bold text-slate-500 group-hover:text-white transition-all">Manage →</span>
+              </div>
             </div>
           </div>
         </>
@@ -851,7 +868,7 @@ export default function AdminLiveDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
             </span>
             <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-extrabold">
-              Firebase/Firestore direct API Request Stream Log
+              Supabase direct API Request Stream Log
             </h3>
           </div>
           <button 

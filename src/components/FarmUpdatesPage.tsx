@@ -112,7 +112,7 @@ export default function FarmUpdatesPage() {
         videoUrl.trim() || undefined
       );
 
-      alert("Success! The operational update has been successfully saved to Firebase and published to the feed.");
+      alert("Success! The operational update has been successfully saved to Supabase and published to the feed.");
       
       // Reset Admin Form inputs
       setTitle("");
@@ -678,7 +678,7 @@ export default function FarmUpdatesPage() {
 
                 <div className="bg-slate-950/40 border border-white/5 p-4 rounded-xl text-[10px] font-mono leading-relaxed text-slate-400">
                   <Info className="w-4 h-4 text-gold-accent shrink-0 mb-1 inline-block mr-2" />
-                  All farm live updates published on Firebase will display instantly on global user investor dashboards dynamically.
+                  All farm live updates published on Supabase will display instantly on global user investor dashboards dynamically.
                 </div>
               </div>
             </motion.div>

@@ -48,7 +48,8 @@ function DashboardView() {
     plans, 
     categories,
     triggerMaturityCheck, 
-    navigate 
+    navigate,
+    isCurrentUserOwner
   } = useFarm();
 
   // User AI personal farm co-pilot assistant state hooks
@@ -86,9 +87,9 @@ function DashboardView() {
           history: aiMessages.map(m => ({ role: m.role, content: m.content })),
           context: {
             user: currentUser,
-            investments: investments.filter(i => i.userId === currentUser?.id),
-            referrals: referrals.filter(r => r.referrerId === currentUser?.id || r.referrerCode === currentUser?.referralCode),
-            deposits: deposits.filter(d => d.userId === currentUser?.id)
+            investments: investments.filter(i => isCurrentUserOwner(i.userId)),
+            referrals: referrals.filter(r => isCurrentUserOwner(r.referrerId) || r.referrerCode === currentUser?.referralCode),
+            deposits: deposits.filter(d => isCurrentUserOwner(d.userId))
           }
         })
       });
@@ -116,12 +117,31 @@ function DashboardView() {
   // 4 Cards metrics calculations
   const totalBalance = currentUser?.balance || 0;
   
-  const activeSponsors = investments.filter(i => i.userId === currentUser?.id && i.status === "active");
+  const activeSponsors = investments.filter(i => isCurrentUserOwner(i.userId) && i.status === "active");
   const activeSponsorsCount = activeSponsors.length;
   const totalActiveInvestments = activeSponsors.reduce((sum, i) => sum + i.amount, 0);
 
   const totalExpectedReturns = activeSponsors.reduce((sum, i) => sum + i.expectedReturn, 0);
-  const referralBonus = currentUser?.referralBonus || 0;
+  
+  // Calculate dynamic referral bonus based on active referrals to avoid hardcoded admin placeholder of ₦12,500.00
+  const myReferralsOnDashboard = referrals.filter(r => 
+    isCurrentUserOwner(r.referrerId) || 
+    r.referrerId === `code_${currentUser?.referralCode?.toUpperCase()}` || 
+    r.referrerCode?.toUpperCase() === currentUser?.referralCode?.toUpperCase()
+  );
+
+  const calculatedReferralBonus = myReferralsOnDashboard.reduce((sum, r) => {
+    if (r.status === "active" || r.status === "complete") {
+      return sum + r.commissionPaid;
+    }
+    const matchDep = deposits.find(d => d.userId === r.referredId || d.userId?.toLowerCase() === r.referredEmail?.toLowerCase());
+    if (matchDep) {
+      return sum + Number((matchDep.amount * 0.05).toFixed(2));
+    }
+    return sum;
+  }, 0);
+
+  const referralBonus = calculatedReferralBonus;
 
   // Category data calculations
   const chickenPlans = plans.filter(p => p.type === "Chicken" && p.status === "active");
@@ -136,7 +156,7 @@ function DashboardView() {
 
   // Assemble comprehensive unified recent activities:
   const depActivities = deposits
-    .filter(d => d.userId === currentUser?.id)
+    .filter(d => isCurrentUserOwner(d.userId))
     .map(d => ({
       id: d.id,
       type: "deposit" as const,
@@ -148,7 +168,7 @@ function DashboardView() {
     }));
 
   const invActivities = investments
-    .filter(i => i.userId === currentUser?.id)
+    .filter(i => isCurrentUserOwner(i.userId))
     .map(i => ({
       id: i.id,
       type: "investment" as const,
@@ -160,7 +180,7 @@ function DashboardView() {
     }));
 
   const withActivities = withdrawals
-    .filter(w => w.userId === currentUser?.id)
+    .filter(w => isCurrentUserOwner(w.userId))
     .map(w => ({
       id: w.id,
       type: "withdrawal" as const,
@@ -661,7 +681,7 @@ function DepositView() {
   const [submitted, setSubmitted] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText("9907817696");
+    navigator.clipboard.writeText("8810649914");
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -822,7 +842,7 @@ function DepositView() {
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-slate-400 font-mono text-[11px]">Bank Name:</span>
-              <span className="text-white font-extrabold text-sm">indulge MFB</span>
+              <span className="text-white font-extrabold text-sm">Sterling BANK</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-slate-400 font-mono text-[11px]">Account Name:</span>
@@ -831,7 +851,7 @@ function DepositView() {
             <div className="flex justify-between items-center">
               <span className="text-slate-400 font-mono text-[11px]">Account Number:</span>
               <div className="flex items-center gap-1.5">
-                <span className="text-gold-accent font-black tracking-widest text-sm font-mono">9907817696</span>
+                <span className="text-gold-accent font-black tracking-widest text-sm font-mono">8810649914</span>
                 <button
                   type="button"
                   onClick={handleCopy}
@@ -1252,7 +1272,7 @@ function PlansView() {
             <div className="space-y-1.5">
               <h3 className="text-xl font-black text-white font-display">Sponsorship Activated!</h3>
               <p className="text-xs text-slate-450 leading-relaxed">
-                You have successfully sponsored the <strong className="text-white">{successInfo.planName}</strong> program. Your contract is now active in the Firebase pipeline.
+                You have successfully sponsored the <strong className="text-white">{successInfo.planName}</strong> program. Your contract is now active in the Supabase pipeline.
               </p>
             </div>
 
@@ -1430,7 +1450,7 @@ function PlanDetailsView() {
 
 // 5. Active Investments (Portfolio View)
 function ActiveInvestmentsView() {
-  const { investments, plans, withdrawMaturedInvestment, navigate, currentUser } = useFarm();
+  const { investments, plans, withdrawMaturedInvestment, navigate, currentUser, isCurrentUserOwner } = useFarm();
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   
   // Real-time ticking clock state to update the countdowns and maturity states every single second
@@ -1445,13 +1465,13 @@ function ActiveInvestmentsView() {
   
   const activeSponsors = investments.filter(i => {
     // Only current user's investments
-    if (i.userId !== currentUser?.id) return false;
+    if (!isCurrentUserOwner(i.userId)) return false;
     // If matured status, keep under maturedSponsors below
     if (i.status === "matured") return false;
     // Otherwise, it is an active contract (it handles its own visual state when now >= maturesDate)
     return i.status === "active";
   });
-  const maturedSponsors = investments.filter(i => i.userId === currentUser?.id && i.status === "matured");
+  const maturedSponsors = investments.filter(i => isCurrentUserOwner(i.userId) && i.status === "matured");
 
   const handleWithdraw = async (invId: string) => {
     if (withdrawingId) return;
@@ -1760,18 +1780,31 @@ function ProfileSubTabs({ active }: { active: "profile" | "referral" | "withdraw
 
 // 6. Referral Page
 function ReferralView() {
-  const { currentUser, referrals, deposits, investments, triggerManualSync } = useFarm();
+  const { currentUser, referrals, deposits, investments, users, triggerManualSync, isCurrentUserOwner } = useFarm();
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string>("Just now");
   
   const code = currentUser?.referralCode || "RISE8349";
 
-  // Automatically refresh on mount and poll for updates every 8 seconds
+  // Automatically refresh on mount and poll for updates with a safe, optimized background timer
   useEffect(() => {
     const updateTimeStr = () => {
       const now = new Date();
       setLastSyncTime(now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
     };
+
+    let pollRate = 45000; // safe default to prevent referral rendering loops
+    try {
+      const override = localStorage.getItem("fr_sync_rate_override");
+      if (override === "manual") {
+        pollRate = 999999999;
+      } else if (override) {
+        const parsed = parseInt(override, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          pollRate = Math.max(15000, parsed * 1000); // at least 15s to prevent glitches
+        }
+      }
+    } catch (e) {}
 
     const interval = setInterval(async () => {
       try {
@@ -1783,7 +1816,7 @@ function ReferralView() {
       } finally {
         setTimeout(() => setIsSyncing(false), 600);
       }
-    }, 8000);
+    }, pollRate);
 
     return () => clearInterval(interval);
   }, [triggerManualSync]);
@@ -1802,35 +1835,98 @@ function ReferralView() {
     }
   };
 
-  const myReferrals = referrals.filter(r => r.referrerId === currentUser?.id || r.referrerId === `code_${currentUser?.referralCode?.toUpperCase()}` || r.referrerCode?.toUpperCase() === currentUser?.referralCode?.toUpperCase());
+  const myReferrals = referrals.filter(r => isCurrentUserOwner(r.referrerId) || r.referrerId === `code_${currentUser?.referralCode?.toUpperCase()}` || r.referrerCode?.toUpperCase() === currentUser?.referralCode?.toUpperCase());
   
-  // Dynamic deposit status check
+  // Dynamic deposit status check with multi-layer fallback mapping
   const isReferredUserDeposited = (referredId: string, referredEmail: string) => {
-    return deposits.some(d => 
-      (d.userId === referredId || d.userId?.toLowerCase() === referredEmail?.toLowerCase())
+    if (deposits.some(d => 
+      d.userId === referredId || 
+      d.userId?.toLowerCase() === referredEmail?.toLowerCase()
+    )) {
+      return true;
+    }
+    const matchUser = users?.find((u: any) => 
+      u.id === referredId || 
+      u.email?.toLowerCase().trim() === referredEmail?.toLowerCase().trim()
     );
+    if (matchUser) {
+      if (deposits.some(d => 
+        d.userId === matchUser.id || 
+        d.userId?.toLowerCase() === matchUser.email?.toLowerCase()
+      )) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Dynamic investment status check with multi-layer fallback mapping
+  const isReferredUserInvested = (referredId: string, referredEmail: string) => {
+    if (investments.some(inv => 
+      inv.userId === referredId || 
+      inv.userId?.toLowerCase() === referredEmail?.toLowerCase()
+    )) {
+      return true;
+    }
+    const matchUser = users?.find((u: any) => 
+      u.id === referredId || 
+      u.email?.toLowerCase().trim() === referredEmail?.toLowerCase().trim()
+    );
+    if (matchUser) {
+      if (investments.some(inv => 
+        inv.userId === matchUser.id || 
+        inv.userId?.toLowerCase() === matchUser.email?.toLowerCase()
+      )) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const activeReferrals = myReferrals.filter(r => 
     r.status === "active" || 
     r.status === "complete" || 
-    isReferredUserDeposited(r.referredId, r.referredEmail)
+    isReferredUserDeposited(r.referredId, r.referredEmail) ||
+    isReferredUserInvested(r.referredId, r.referredEmail)
   );
   const pendingReferrals = myReferrals.filter(r => 
     r.status !== "active" && 
     r.status !== "complete" && 
-    !isReferredUserDeposited(r.referredId, r.referredEmail)
+    !isReferredUserDeposited(r.referredId, r.referredEmail) &&
+    !isReferredUserInvested(r.referredId, r.referredEmail)
   );
 
-  // Filter unique referred users who have completed at least one investment sponsorship contract
+  // Filter unique referred users who are active (either via active status, completed status, or have a deposit/investment)
   const investingReferrals = myReferrals.filter(r => 
     r.status === "active" || 
     r.status === "complete" || 
-    investments.some(inv => inv.userId === r.referredId)
+    isReferredUserDeposited(r.referredId, r.referredEmail) ||
+    isReferredUserInvested(r.referredId, r.referredEmail)
   );
-  const uniqueInvestingCount = new Set(investingReferrals.map(r => r.referredId.toLowerCase().trim())).size;
+  const uniqueInvestingCount = new Set(investingReferrals.map(r => (r.referredEmail || r.referredId || '').toLowerCase().trim())).size;
   const progressPercent = Math.min(100, (uniqueInvestingCount / 2) * 100);
   const meetsReferralRequirement = currentUser?.isAdmin || uniqueInvestingCount >= 2;
+
+  // Referral Bonus Tiers definition
+  const REFERRAL_TIERS = [
+    { name: "Novice Partner", target: 0, reward: "Standard 5% commissions" },
+    { name: "Seed Sponsor (Tier 1)", target: 2, reward: "Direct Cash-Out gateway access" },
+    { name: "Sprout Investor (Tier 2)", target: 5, reward: "+1.5% profit yield on all future contracts" },
+    { name: "Harvest Partner (Tier 3)", target: 10, reward: "+3.0% profit yield & Priority 1-hr withdrawals" },
+    { name: "Agri Ambassador (Tier 4)", target: 20, reward: "+5.0% profit yield & Dedicated VIP Account Manager" }
+  ];
+
+  const currentTierIndex = REFERRAL_TIERS.reduce((acc, tier, index) => {
+    if (uniqueInvestingCount >= tier.target) return index;
+    return acc;
+  }, 0);
+
+  const currentTier = REFERRAL_TIERS[currentTierIndex];
+  const nextTier = currentTierIndex < REFERRAL_TIERS.length - 1 ? REFERRAL_TIERS[currentTierIndex + 1] : null;
+  const tierProgressPercent = nextTier 
+    ? Math.min(100, (uniqueInvestingCount / nextTier.target) * 100)
+    : 100;
+  const referralsNeeded = nextTier ? nextTier.target - uniqueInvestingCount : 0;
 
   const totalCommissionEarned = myReferrals.reduce((sum, r) => {
     if (r.status === "active" || r.status === "complete") {
@@ -1849,7 +1945,8 @@ function ReferralView() {
   };
 
   const handleCopyLink = () => {
-    const inviteLink = `https://farmrise-512146898255.europe-west2.run.app/register?ref=${code}`;
+    const originUrl = typeof window !== "undefined" ? window.location.origin : "https://farmrise-512146898255.europe-west2.run.app";
+    const inviteLink = `${originUrl}/register?ref=${code}`;
     navigator.clipboard.writeText(inviteLink);
     alert("FarmRise unique referral link copied to your clipboard!");
   };
@@ -1978,6 +2075,94 @@ function ReferralView() {
             ) : (
               <span className="text-[9px] bg-slate-900/80 text-slate-500 px-2 py-0.5 rounded-full font-mono font-bold uppercase">Pending</span>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* Dynamic Referral Bonus Tiers Progress Tracker */}
+      <div className="glass-panel rounded-2xl p-5 border border-white/10 bg-gradient-to-br from-slate-950 via-slate-900/60 to-[#040c1e] space-y-4">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1 text-left">
+            <h3 className="text-xs font-mono uppercase tracking-wider text-purple-400 font-black flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-purple-400 shrink-0 animate-pulse" /> Affiliate Partner Tiers
+            </h3>
+            <p className="text-[11px] text-slate-400 font-sans leading-snug">
+              Unlock higher referral payout privileges as you sponsor more co-funding partners.
+            </p>
+          </div>
+          <span className="text-[9px] font-mono font-black uppercase px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
+            {currentTier.name}
+          </span>
+        </div>
+
+        {/* Visual Progress Bar to Next Tier */}
+        {nextTier ? (
+          <div className="space-y-3 bg-slate-950/40 p-4 rounded-xl border border-white/5">
+            <div className="flex justify-between items-baseline text-[11px] font-mono">
+              <span className="text-slate-300 font-bold text-left">
+                Next Tier: <span className="text-purple-400">{nextTier.name}</span>
+              </span>
+              <span className="text-slate-450 font-bold">
+                {uniqueInvestingCount} / {nextTier.target} Active Partners
+              </span>
+            </div>
+
+            {/* Visual Bar */}
+            <div className="space-y-1.5">
+              <div className="w-full bg-slate-950/80 rounded-full h-3.5 border border-white/5 overflow-hidden p-[2.5px] relative">
+                <div 
+                  className="h-full rounded-full transition-all duration-1000 ease-out-back bg-gradient-to-r from-purple-600 via-indigo-500 to-purple-400"
+                  style={{ width: `${tierProgressPercent}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[9px] font-mono text-slate-450">
+                <span>{currentTier.name} ({currentTier.target})</span>
+                <span className="text-purple-400 font-bold">{referralsNeeded} more needed</span>
+                <span>{nextTier.name} ({nextTier.target})</span>
+              </div>
+            </div>
+
+            {/* Benefit Announcement */}
+            <div className="text-[11px] text-left text-slate-300 bg-purple-500/5 p-2.5 rounded-lg border border-purple-500/10 flex items-start gap-2">
+              <span className="text-xs">🎁</span>
+              <span>
+                <strong>Next Reward:</strong> {nextTier.reward}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 rounded-xl border border-emerald-500/15 bg-emerald-500/5 text-center space-y-1">
+            <p className="text-xs font-bold text-emerald-400">👑 Max Tier Achieved!</p>
+            <p className="text-[11px] text-slate-400">You are a FarmRise Agri Ambassador with maximum privileges.</p>
+          </div>
+        )}
+
+        {/* Tier Roadmap Grid */}
+        <div className="space-y-2 pt-1 text-left">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold block mb-1">Roadmap Perks</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {REFERRAL_TIERS.filter(tier => tier.target > 0).map((tier) => {
+              const isAchieved = uniqueInvestingCount >= tier.target;
+              return (
+                <div 
+                  key={tier.name}
+                  className={`p-3 rounded-xl border transition-all flex items-start gap-2.5 ${
+                    isAchieved 
+                      ? "bg-purple-500/10 border-purple-500/30 text-purple-200" 
+                      : "bg-slate-950/30 border-white/5 text-slate-450"
+                  }`}
+                >
+                  <div className={`p-1.5 rounded-lg mt-0.5 shrink-0 ${isAchieved ? "bg-purple-500/20 text-purple-300" : "bg-slate-900 text-slate-600"}`}>
+                    <Check className={`w-3.5 h-3.5 ${isAchieved ? "opacity-100" : "opacity-30"}`} />
+                  </div>
+                  <div className="space-y-0.5">
+                    <h4 className="text-[11px] font-black uppercase tracking-wide leading-none">{tier.name}</h4>
+                    <p className="text-[10px] text-slate-400 leading-normal">{tier.reward}</p>
+                    <span className="text-[9px] font-mono block opacity-80 font-bold">Goal: {tier.target} active sponsors</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -2111,31 +2296,79 @@ function ReferralView() {
 
 // 7. Withdrawal Page
 function WithdrawalView() {
-  const { currentUser, investments, referrals, createWithdrawal, navigate } = useFarm();
+  const { currentUser, investments, referrals, deposits, users, createWithdrawal, navigate, isCurrentUserOwner } = useFarm();
   const [bankName, setBankName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountName, setAccountName] = useState("");
   const [wAmt, setWAmt] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const hasCompletedInvestment = investments.some(inv => inv.userId === currentUser?.id && inv.status === "matured");
+  const hasCompletedInvestment = investments.some(inv => isCurrentUserOwner(inv.userId) && inv.status === "matured");
 
   // Determine user referrals
   const myReferralsList = referrals.filter(r => 
-    r.referrerId === currentUser?.id || 
+    isCurrentUserOwner(r.referrerId) || 
     r.referrerId === `code_${currentUser?.referralCode?.toUpperCase()}` || 
     r.referrerCode?.toUpperCase() === currentUser?.referralCode?.toUpperCase()
   );
 
   // Filter referrals who have made at least one investment entry
+  // Dynamic deposit status check with multi-layer fallback mapping
+  const isReferredUserDeposited = (referredId: string, referredEmail: string) => {
+    if (deposits.some(d => 
+      d.userId === referredId || 
+      d.userId?.toLowerCase() === referredEmail?.toLowerCase()
+    )) {
+      return true;
+    }
+    const matchUser = users?.find((u: any) => 
+      u.id === referredId || 
+      u.email?.toLowerCase().trim() === referredEmail?.toLowerCase().trim()
+    );
+    if (matchUser) {
+      if (deposits.some(d => 
+        d.userId === matchUser.id || 
+        d.userId?.toLowerCase() === matchUser.email?.toLowerCase()
+      )) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Dynamic investment status check with multi-layer fallback mapping
+  const isReferredUserInvested = (referredId: string, referredEmail: string) => {
+    if (investments.some(inv => 
+      inv.userId === referredId || 
+      inv.userId?.toLowerCase() === referredEmail?.toLowerCase()
+    )) {
+      return true;
+    }
+    const matchUser = users?.find((u: any) => 
+      u.id === referredId || 
+      u.email?.toLowerCase().trim() === referredEmail?.toLowerCase().trim()
+    );
+    if (matchUser) {
+      if (investments.some(inv => 
+        inv.userId === matchUser.id || 
+        inv.userId?.toLowerCase() === matchUser.email?.toLowerCase()
+      )) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Filter referrals who have made at least one investment or deposit entry
   const investingReferrals = myReferralsList.filter(r => 
     r.status === "active" || 
     r.status === "complete" || 
-    investments.some(inv => inv.userId === r.referredId)
+    isReferredUserDeposited(r.referredId, r.referredEmail) ||
+    isReferredUserInvested(r.referredId, r.referredEmail)
   );
 
   // Filter unique referred users who have invested
-  const uniqueInvestingCount = new Set(investingReferrals.map(r => r.referredId.toLowerCase().trim())).size;
+  const uniqueInvestingCount = new Set(investingReferrals.map(r => (r.referredEmail || r.referredId || '').toLowerCase().trim())).size;
   const meetsReferralRequirement = currentUser?.isAdmin || uniqueInvestingCount >= 2;
 
   const canRequestWithdrawal = hasCompletedInvestment && meetsReferralRequirement;
@@ -2543,9 +2776,9 @@ function ProfileView() {
             🔒
           </div>
           <div className="flex-1 text-left">
-            <h4 className="text-sm font-bold text-white font-display">Secure Biometric Unlock Shield</h4>
+            <h4 className="text-sm font-bold text-white font-display">Secure PIN Access Guard</h4>
             <p className="text-[10px] text-slate-450 mt-1 leading-relaxed">
-              Enforce local fingerprint scanning or private numeric passcode before resuming your wallet context on app launch or session wakeup.
+              Enforce a private numeric security passcode before resuming your wallet context on app launch or session wakeup.
             </p>
           </div>
         </div>
@@ -2555,7 +2788,7 @@ function ProfileView() {
             <span className="text-[10px] font-mono text-purple-400 font-bold uppercase tracking-wider block">Shield Status Checks</span>
             <p className="text-xs text-white font-medium">
               {isSecureUnlockActive 
-                ? `Active & Guarded via device ${secureUnlockType === "biometric" ? "Fingerprint/Face identity" : "4-digit passcode"}`
+                ? "Active & Guarded via secret 4-digit security PIN"
                 : "Inactive (Wallet & layout resume unguarded)"}
             </p>
           </div>
@@ -2573,7 +2806,7 @@ function ProfileView() {
                 onClick={handleEnableSecureUnlock}
                 className="py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-md"
               >
-                Enable Secure Shield
+                Enable PIN Shield
               </button>
             )}
           </div>

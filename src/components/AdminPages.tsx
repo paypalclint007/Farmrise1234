@@ -6,7 +6,7 @@ import {
   ArrowLeft, Bell, Landmark, Settings, Plus, Star, Layers, Percent,
   Ban, UserCheck, Search, Image as ImageIcon, Video, Trash2, Edit,
   TrendingUp, Coins, AlertTriangle, Play, HelpCircle, Sparkles, Loader2,
-  Calendar, Clock, CheckCircle
+  Calendar, Clock, CheckCircle, RefreshCw
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { InvestmentPlan, UserProfile, FarmUpdate, LivestockCategory } from "../types";
@@ -83,6 +83,8 @@ export default function AdminPages() {
       return <FarmUpdatesManagementView />;
     case "admin-notifications":
       return <NotificationsManagementView />;
+    case "admin-referrals":
+      return <ReferralsManagementView />;
     default:
       return <AdminLiveDashboard />;
   }
@@ -284,7 +286,7 @@ function AdminDashboardView() {
 
 // 2. Users Management Board (With Search & Ban/Unban)
 function UsersManagementView() {
-  const { users, banUser, adjustUserWallet, navigate } = useFarm();
+  const { users, banUser, adjustUserWallet, navigate, investments = [], getEmailForUserId } = useFarm();
   const [searchQuery, setSearchQuery] = useState("");
   const [blockingId, setBlockingId] = useState<string | null>(null);
 
@@ -303,6 +305,11 @@ function UsersManagementView() {
     const phoneMatch = u.phoneNumber?.includes(searchQuery);
     return nameMatch || emailMatch || phoneMatch;
   });
+
+  // Deduplicate filteredUsers by ID to prevent key duplication glitches
+  const uniqueFilteredUsers: UserProfile[] = Array.from(
+    new Map<string, UserProfile>(filteredUsers.map((u) => [u.id, u])).values()
+  );
 
   const handleToggleBanned = async (u: UserProfile) => {
     const isCurrentlyBanned = !!u.isBanned;
@@ -378,15 +385,21 @@ function UsersManagementView() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredUsers.length === 0 ? (
+        {uniqueFilteredUsers.length === 0 ? (
           <div className="col-span-full border border-dashed border-white/10 rounded-2xl p-12 text-center bg-slate-900/10">
             <Users className="w-8 h-8 text-slate-500 mx-auto mb-3" />
             <p className="text-xs text-slate-400 uppercase tracking-wider font-bold">No Partners Match Selection</p>
             <p className="text-[10px] text-slate-500 mt-1">Refine your search parameters at the search input bar</p>
           </div>
         ) : (
-          filteredUsers.map((u) => {
+          uniqueFilteredUsers.map((u) => {
             const isEditing = editingUserId === u.id;
+            const userActiveInvestments = (investments || []).filter(
+              (i) => {
+                const investmentEmail = getEmailForUserId(i.userId);
+                return investmentEmail.toLowerCase().trim() === u.email.toLowerCase().trim() && i.status === "active";
+              }
+            );
             return (
               <div 
                 key={u.id} 
@@ -543,6 +556,54 @@ function UsersManagementView() {
                     </div>
                   </motion.div>
                 )}
+
+                {/* Active Co-funding Contracts / Plans */}
+                <div className="pt-3 border-t border-white/5 space-y-2 text-left">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-mono text-purple-400 font-extrabold uppercase tracking-wider block">
+                      Active Co-Funding Plans ({userActiveInvestments.length})
+                    </span>
+                    {userActiveInvestments.length > 0 && (
+                      <span className="text-[8px] font-mono text-slate-450 uppercase font-bold">
+                        Running contracts
+                      </span>
+                    )}
+                  </div>
+                  {userActiveInvestments.length === 0 ? (
+                    <span className="text-[9px] text-slate-500 font-mono block italic">
+                      No active plans currently running.
+                    </span>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+                      {userActiveInvestments.map((inv) => {
+                        const maturesDate = new Date(inv.maturesAt);
+                        return (
+                          <div 
+                            key={inv.id} 
+                            className="bg-slate-950/50 border border-white/5 p-2.5 rounded-xl flex items-center justify-between text-[9px] font-mono gap-1 hover:border-purple-500/10 transition-colors"
+                          >
+                            <div className="truncate flex-1 text-left">
+                              <span className="text-white font-bold block truncate">
+                                {inv.type === "Chicken" ? "🐓" : "🐖"} {inv.planName}
+                              </span>
+                              <span className="text-slate-400 text-[8px] block mt-0.5">
+                                Matures: {maturesDate.toLocaleDateString(undefined, {month: "short", day: "numeric", year: "numeric"})}
+                              </span>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="text-[#00E676] font-extrabold block">
+                                +₦{(inv.expectedReturn || 0).toLocaleString()}
+                              </span>
+                              <span className="text-slate-500 text-[8px] block mt-0.5">
+                                Invested: ₦{(inv.amount || 0).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 {/* Action buttons */}
                 <div className="flex items-center gap-3 pt-1">
@@ -2307,7 +2368,7 @@ function NotificationsManagementView() {
 
     try {
       await sendBroadcastNotification(pushTitle, notifMsg.trim(), targetId);
-      alert("Success! Bulletin alert has been dispatched and stored on Firebase/Firestore successfully.");
+      alert("Success! Bulletin alert has been dispatched and stored on Supabase successfully.");
       setNotifTitle("");
       setNotifMsg("");
     } catch (err: any) {
@@ -2412,3 +2473,475 @@ function NotificationsManagementView() {
     </div>
   );
 }
+
+// 8. Admin Referral & Affiliate Partner Management View
+function ReferralsManagementView() {
+  const { 
+    referrals = [], 
+    users = [], 
+    investments = [],
+    createReferral, 
+    updateReferralStatus, 
+    deleteReferral, 
+    triggerManualSync,
+    navigate 
+  } = useFarm();
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isLinking, setIsLinking] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isActionPending, setIsActionPending] = useState<string | null>(null);
+
+  // Link New Referral Form State
+  const [referrerId, setReferrerId] = useState("");
+  const [referredId, setReferredId] = useState("");
+  const [linkStatus, setLinkStatus] = useState<"pending" | "active">("pending");
+  const [commissionAmt, setCommissionAmt] = useState("");
+
+  // Statistics calculation for high-level cards
+  const totalInvites = referrals.length;
+  const pendingInvites = referrals.filter(r => r.status === "pending").length;
+  const approvedInvites = referrals.filter(r => r.status === "active").length;
+  const totalCommissionsPaid = referrals.reduce((sum, r) => sum + (r.commissionPaid || 0), 0);
+
+  // Manual database sync
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      await triggerManualSync();
+      alert("Referral & User registry updated successfully with the live cloud database!");
+    } catch (err: any) {
+      alert(`Sync failed: ${err.message || String(err)}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Filter referrals by search
+  const filteredReferrals = referrals.filter((r) => {
+    const term = searchQuery.toLowerCase().trim();
+    if (!term) return true;
+
+    // Fetch referrer and referred users
+    const referrerUser = users.find(u => u.id === r.referrerId);
+    const referredUser = users.find(u => u.id === r.referredId);
+    
+    return (
+      r.referrerCode?.toLowerCase().includes(term) ||
+      r.referredName?.toLowerCase().includes(term) ||
+      r.referredEmail?.toLowerCase().includes(term) ||
+      (referrerUser && (
+        referrerUser.name?.toLowerCase().includes(term) ||
+        referrerUser.email?.toLowerCase().includes(term) ||
+        referrerUser.referralCode?.toLowerCase().includes(term)
+      )) ||
+      (referredUser && (
+        referredUser.name?.toLowerCase().includes(term) ||
+        referredUser.email?.toLowerCase().includes(term) ||
+        referredUser.referralCode?.toLowerCase().includes(term)
+      ))
+    );
+  });
+
+  const handleLinkReferral = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!referrerId || !referredId) {
+      alert("Please select both a Referrer and a Referred user.");
+      return;
+    }
+    if (referrerId === referredId) {
+      alert("A user cannot refer themselves.");
+      return;
+    }
+
+    // Check if referral link already exists
+    const exists = referrals.some(
+      r => r.referrerId === referrerId && r.referredId === referredId
+    );
+    if (exists) {
+      alert("A referral link already exists between these two users.");
+      return;
+    }
+
+    setIsLinking(true);
+    try {
+      const commission = Number(commissionAmt) || 0;
+      await createReferral(referrerId, referredId, linkStatus, commission);
+      alert("Referral link established and registered successfully!");
+      // Reset form
+      setReferrerId("");
+      setReferredId("");
+      setCommissionAmt("");
+      setLinkStatus("pending");
+    } catch (err: any) {
+      alert(`Establishment failed: ${err.message || String(err)}`);
+    } finally {
+      setIsLinking(false);
+    }
+  };
+
+  const handleApproveReferral = async (refId: string) => {
+    // Look up the referred user and their investments to suggest commission
+    const ref = referrals.find(r => r.id === refId);
+    let suggestedAmt = "5000";
+    if (ref) {
+      const partnerInvestments = investments.filter(inv => inv.userId === ref.referredId);
+      const totalInvested = partnerInvestments.reduce((sum, inv) => sum + inv.amount, 0);
+      if (totalInvested > 0) {
+        // Suggest 5% of their total investment
+        suggestedAmt = String(Math.floor(totalInvested * 0.05));
+      }
+    }
+
+    const commissionStr = prompt(
+      `Enter Commission Amount (₦) to award referrer (Recommended 5% direct bonus):`, 
+      suggestedAmt
+    );
+    if (commissionStr === null) return; // cancelled
+
+    setIsActionPending(refId);
+    try {
+      const commission = Number(commissionStr) || 0;
+      await updateReferralStatus(refId, "active", commission);
+      alert("Referral successfully approved and commission credited to referrer!");
+    } catch (err: any) {
+      alert(`Approval failed: ${err.message || String(err)}`);
+    } finally {
+      setIsActionPending(null);
+    }
+  };
+
+  const handleDeleteReferral = async (refId: string) => {
+    if (!confirm("Are you sure you want to permanently delete this referral record? This cannot be undone.")) return;
+
+    setIsActionPending(refId);
+    try {
+      await deleteReferral(refId);
+      alert("Referral record deleted successfully.");
+    } catch (err: any) {
+      alert(`Deletion failed: ${err.message || String(err)}`);
+    } finally {
+      setIsActionPending(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6 pb-24 font-sans text-left">
+      {/* Header with Live Sync Controls */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pt-2">
+        <div>
+          <h2 className="text-xl font-black font-display text-white flex items-center gap-2">
+            <Award className="text-gold-accent w-5 h-5" /> Affiliate Partners Network
+          </h2>
+          <p className="text-[10px] text-slate-400 mt-1">
+            Establish connection rules, audit direct commissions, and manage cash-out activation gateways.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <button 
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className="flex-1 md:flex-initial text-[10px] font-bold font-mono px-3 py-1.5 rounded-lg border border-white/10 bg-slate-950/40 text-slate-300 hover:text-white hover:bg-slate-900 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            {isSyncing ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+            ) : (
+              <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            Refresh Registry
+          </button>
+
+          <button 
+            onClick={() => navigate("admin-dashboard")}
+            className="flex-1 md:flex-initial text-[10px] font-bold font-mono px-3 py-1.5 rounded-lg border border-white/10 text-slate-300 hover:text-white hover:bg-slate-900 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Back Control Desk
+          </button>
+        </div>
+      </div>
+
+      {/* Overview Statistics Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="glass-panel p-4 rounded-2xl border border-white/5 bg-slate-950/20">
+          <span className="text-[9px] font-mono uppercase text-slate-500 block">Total Invited Partners</span>
+          <span className="text-lg md:text-xl font-bold text-white font-mono block mt-1">{totalInvites}</span>
+        </div>
+        <div className="glass-panel p-4 rounded-2xl border border-white/5 bg-slate-950/20">
+          <span className="text-[9px] font-mono uppercase text-slate-500 block">Pending Approvals</span>
+          <span className="text-lg md:text-xl font-bold text-amber-400 font-mono block mt-1">{pendingInvites}</span>
+        </div>
+        <div className="glass-panel p-4 rounded-2xl border border-white/5 bg-slate-950/20">
+          <span className="text-[9px] font-mono uppercase text-slate-500 block">Activated Partners</span>
+          <span className="text-lg md:text-xl font-bold text-emerald-400 font-mono block mt-1">{approvedInvites}</span>
+        </div>
+        <div className="glass-panel p-4 rounded-2xl border border-white/5 bg-slate-950/20">
+          <span className="text-[9px] font-mono uppercase text-slate-500 block">Bonuses Distributed</span>
+          <span className="text-lg md:text-xl font-bold text-amber-300 font-mono block mt-1">₦{totalCommissionsPaid.toLocaleString()}</span>
+        </div>
+      </div>
+
+      {/* Grid container for Manual establish and existing referrals */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Left Column: Manual Establishment Panel */}
+        <div className="lg:col-span-1 glass-panel p-5 rounded-2xl border border-white/10 bg-slate-950/20 space-y-4">
+          <div className="space-y-1">
+            <h3 className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-amber-400" /> Link New Referral
+            </h3>
+            <p className="text-[10px] text-slate-400">
+              Manually link a newly invited user to their referring sponsor to unlock their bonuses.
+            </p>
+          </div>
+
+          <form onSubmit={handleLinkReferral} className="space-y-3.5">
+            <div>
+              <label className="block text-[9px] font-mono text-slate-400 uppercase mb-1 font-bold">1. Select Referrer (Sponsor)</label>
+              <select
+                required
+                value={referrerId}
+                onChange={(e) => setReferrerId(e.target.value)}
+                className="w-full glass-input rounded-xl p-3 text-xs text-white bg-slate-950 outline-none border border-white/10"
+              >
+                <option value="">-- Choose Referrer --</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id} className="bg-slate-950 text-white">
+                    {u.name} ({u.email}) [Code: {u.referralCode || "N/A"}]
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[9px] font-mono text-slate-400 uppercase mb-1 font-bold">2. Select Referred Partner</label>
+              <select
+                required
+                value={referredId}
+                onChange={(e) => setReferredId(e.target.value)}
+                className="w-full glass-input rounded-xl p-3 text-xs text-white bg-slate-950 outline-none border border-white/10"
+              >
+                <option value="">-- Choose Referred User --</option>
+                {users
+                  .filter(u => u.id !== referrerId)
+                  .map(u => (
+                    <option key={u.id} value={u.id} className="bg-slate-950 text-white">
+                      {u.name} ({u.email})
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[9px] font-mono text-slate-400 uppercase mb-1 font-bold">Initial Status</label>
+                <select
+                  value={linkStatus}
+                  onChange={(e) => setLinkStatus(e.target.value as any)}
+                  className="w-full glass-input rounded-xl p-3 text-xs text-white bg-slate-950 outline-none border border-white/10"
+                >
+                  <option value="pending" className="bg-slate-950">Pending</option>
+                  <option value="active" className="bg-slate-950">Active (Paid)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-mono text-slate-400 uppercase mb-1 font-bold">Commission (₦)</label>
+                <input
+                  type="number"
+                  placeholder="e.g. 5000"
+                  value={commissionAmt}
+                  onChange={(e) => setCommissionAmt(e.target.value)}
+                  className="w-full glass-input rounded-xl p-3 text-xs text-white bg-slate-950 outline-none border border-white/10"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLinking}
+              className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg disabled:opacity-50 flex items-center justify-center gap-1.5"
+            >
+              {isLinking ? (
+                <Loader2 className="animate-spin w-4 h-4 text-slate-950" />
+              ) : (
+                <>
+                  <Check className="w-4 h-4 text-slate-950" /> Bind & Register Link
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+
+        {/* Right Columns: Active Connections List */}
+        <div className="lg:col-span-2 glass-panel p-5 rounded-2xl border border-white/10 bg-slate-950/20 space-y-4 flex flex-col">
+          
+          {/* List Search bar and stats count */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
+                Audit Registry <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-slate-450">{filteredReferrals.length} listed</span>
+              </h3>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Search sponsor/partner..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-950/90 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-white/20 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="overflow-x-auto rounded-xl border border-white/5 bg-slate-950/40">
+            {filteredReferrals.length === 0 ? (
+              <div className="p-12 text-center text-xs text-slate-500 font-mono">
+                No affiliate referral logs matched your search terms.
+              </div>
+            ) : (
+              <table className="w-full text-left border-collapse min-w-[700px]">
+                <thead>
+                  <tr className="bg-slate-900/60 border-b border-white/5 font-mono text-[9px] uppercase tracking-wider text-slate-400">
+                    <th className="p-3">Sponsor / Referrer</th>
+                    <th className="p-3">Referred Partner</th>
+                    <th className="p-3 text-center">Investment Activity</th>
+                    <th className="p-3 text-center">Bonus Posted</th>
+                    <th className="p-3 text-center">Status</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 text-xs">
+                  {filteredReferrals.map((r) => {
+                    const sponsorUser = users.find(u => u.id === r.referrerId);
+                    const referredUser = users.find(u => u.id === r.referredId);
+                    const isPending = r.status === "pending";
+
+                    // Fetch actual live investments of the referred partner
+                    const partnerInvestments = investments.filter(inv => inv.userId === r.referredId);
+                    const totalInvested = partnerInvestments.reduce((sum, inv) => sum + inv.amount, 0);
+                    const hasInvested = partnerInvestments.length > 0;
+
+                    // Compute display attributes
+                    const sponsorName = sponsorUser?.name || "Registered Account";
+                    const sponsorEmail = sponsorUser?.email || "Unknown Email";
+                    const sponsorCode = r.referrerCode || sponsorUser?.referralCode || "N/A";
+
+                    const partnerName = referredUser?.name || r.referredName || "Invited Partner";
+                    const partnerEmail = referredUser?.email || r.referredEmail || "Unknown Email";
+                    const partnerCode = referredUser?.referralCode || "N/A";
+                    const partnerPhone = referredUser?.phoneNumber || referredUser?.phone || r.referredPhone || "N/A";
+
+                    return (
+                      <tr key={r.id} className="hover:bg-white/[0.02] transition-colors">
+                        {/* 1. Sponsor column */}
+                        <td className="p-3">
+                          <div className="font-bold text-white leading-tight">{sponsorName}</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">{sponsorEmail}</div>
+                          <div className="inline-block mt-1 text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500">
+                            Code: {sponsorCode}
+                          </div>
+                        </td>
+
+                        {/* 2. Referred Partner column */}
+                        <td className="p-3">
+                          <div className="font-bold text-slate-200 leading-tight">{partnerName}</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">{partnerEmail}</div>
+                          {partnerPhone !== "N/A" && <div className="text-[9px] font-mono text-slate-500 mt-0.5">{partnerPhone}</div>}
+                          <div className="inline-block mt-1 text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400">
+                            Code: {partnerCode}
+                          </div>
+                        </td>
+
+                        {/* 3. Investment Activity column */}
+                        <td className="p-3 text-center">
+                          {hasInvested ? (
+                            <div className="space-y-1">
+                              <span className="inline-block text-[10px] bg-emerald-500/10 text-emerald-400 font-mono font-bold px-2 py-0.5 rounded border border-emerald-500/10">
+                                Invested: ₦{totalInvested.toLocaleString()}
+                              </span>
+                              <div className="text-[9px] text-slate-400 max-w-[150px] mx-auto truncate" title={partnerInvestments.map(inv => inv.planName).join(", ")}>
+                                {partnerInvestments.length} Active Plan(s)
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="inline-block text-[9px] bg-slate-800 text-slate-400 font-mono px-2 py-0.5 rounded border border-white/5">
+                                No investment yet
+                              </span>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 4. Bonus Posted column */}
+                        <td className="p-3 text-center">
+                          <div className="font-mono font-bold text-amber-300">
+                            ₦{(r.commissionPaid || 0).toLocaleString()}
+                          </div>
+                          <span className="text-[9px] text-slate-500 font-mono">
+                            {!isPending ? "Credited" : "Pending Approval"}
+                          </span>
+                        </td>
+
+                        {/* 5. Status verification indicator */}
+                        <td className="p-3 text-center">
+                          {!isPending ? (
+                            <span className="inline-block text-[8px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full font-mono font-black uppercase border border-emerald-500/15">
+                              Approved
+                            </span>
+                          ) : hasInvested ? (
+                            <span className="inline-block text-[8px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-mono font-black uppercase border border-amber-500/25 animate-pulse">
+                              Eligible (Invested)
+                            </span>
+                          ) : (
+                            <span className="inline-block text-[8px] bg-slate-800/60 text-slate-500 px-2 py-0.5 rounded-full font-mono font-black uppercase border border-white/5">
+                              Pending Investment
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 6. Action buttons */}
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isPending && (
+                              <button
+                                disabled={isActionPending !== null}
+                                onClick={() => handleApproveReferral(r.id)}
+                                className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1 ${
+                                  hasInvested 
+                                    ? "bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-md shadow-amber-400/10" 
+                                    : "bg-slate-800 hover:bg-slate-700 text-slate-300"
+                                }`}
+                              >
+                                <CheckCircle className="w-3 h-3" /> Approve Bonus
+                              </button>
+                            )}
+                            <button
+                              disabled={isActionPending !== null}
+                              onClick={() => handleDeleteReferral(r.id)}
+                              className="bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-400 px-2 py-1 rounded text-[10px] font-bold transition-all disabled:opacity-50 cursor-pointer"
+                              title="Delete Connection"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  );
+}
+

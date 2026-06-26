@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useSecureLockState, SecureUnlockSetupPrompt, SecureUnlockOverlay } from "./components/SecureUnlock";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import GlitchDoctor from "./components/GlitchDoctor";
 
 function MainAppShell() {
   const { 
@@ -18,7 +20,8 @@ function MainAppShell() {
     navigate, 
     notifications, 
     markNotificationRead: markNotificationAsRead,
-    loading
+    loading,
+    cloudSyncError
   } = useFarm();
 
   const {
@@ -357,6 +360,44 @@ function MainAppShell() {
 
         {/* Dynamic content area */}
         <main className="flex-1 overflow-y-auto px-6 pt-6 pb-24 md:p-8 bg-gradient-to-b from-[#081120] to-[#040912]">
+          {cloudSyncError && (
+            <div className="mb-6 max-w-7xl mx-auto">
+              <div className="relative overflow-hidden p-4 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full filter blur-2xl pointer-events-none" />
+                <div className="flex items-center gap-3.5 z-10 text-center sm:text-left flex-col sm:flex-row">
+                  <div className="w-11 h-11 bg-amber-500/10 text-amber-500 rounded-2xl shrink-0 font-display font-extrabold text-sm shadow-md flex items-center justify-center">
+                    ⚠️
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-amber-400 font-display">Database Sync Notice</h4>
+                    <p className="text-[11px] text-white/70 mt-0.5 leading-relaxed max-w-lg">
+                      {cloudSyncError} Your balance, sponsors, and deposits are kept perfectly secure in your device's local encrypted storage.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2.5 shrink-0 z-10 w-full sm:w-auto justify-center sm:justify-end">
+                  <button
+                    onClick={() => {
+                      localStorage.setItem("fr_database_mode", "local");
+                      window.location.reload();
+                    }}
+                    className="py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5"
+                  >
+                    Use Normal Database
+                  </button>
+                  <button
+                    onClick={() => {
+                      window.location.reload();
+                    }}
+                    className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {showInstallBanner && (
             <div className="mb-6 max-w-7xl mx-auto">
               <div className="relative overflow-hidden p-4 rounded-3xl bg-gradient-to-r from-amber-500/10 via-[#F5B300]/15 to-green-500/10 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
@@ -560,6 +601,9 @@ function MainAppShell() {
         )}
       </AnimatePresence>
 
+      {/* Glitch Doctor Diagnostics & WhatsApp Support */}
+      <GlitchDoctor />
+
       {/* Floating WhatsApp Support & Community Link */}
       <div className="fixed bottom-24 md:bottom-8 right-6 z-40">
         <a
@@ -588,7 +632,9 @@ function MainAppShell() {
 export default function App() {
   return (
     <FarmProvider>
-      <MainAppShell />
+      <ErrorBoundary>
+        <MainAppShell />
+      </ErrorBoundary>
     </FarmProvider>
   );
 }

@@ -1,16 +1,16 @@
 {
-  "endpoint": "https://cloud.appwrite.io/v1",
+  "endpoint": "https://fra.cloud.appwrite.io/v1",
   "projectId": "",
   "databaseId": "default",
   "useMock": true,
   "collections": {
     "users": "users",
-    "plans": "investmentPlans",
+    "plans": "investmentplans",
     "deposits": "deposits",
     "investments": "investments",
     "withdrawals": "withdrawals",
     "notifications": "notifications",
-    "farmUpdates": "farmUpdates",
+    "farmUpdates": "farmupdates",
     "referrals": "referrals"
   }
 }
